@@ -1,9 +1,8 @@
 """The progress bar the panel is built from.
 
-The Tk canvas draws without antialiasing, so its round line caps come out as
-blunt stair steps at the thickness used here. The bar is therefore drawn by
-Pillow on a supersampled canvas and placed on the Tk canvas as an image, which
-is what gives the ends the clean capsule shape.
+A bar is the shared rounded fill at its fullest radius, which is what gives the
+ends their capsule shape where the round line caps of the Tk canvas would come
+out as blunt stair steps.
 
 The track is rendered once. The fill is re-rendered only when its width changes
 by a whole device pixel, so an animating bar redraws a few dozen times rather
@@ -14,11 +13,10 @@ from __future__ import annotations
 
 import tkinter as tk
 
-from PIL import Image, ImageDraw, ImageTk
+from PIL import Image, ImageTk
 
+from ..render.shapes import rounded_fill
 from ..validation import require_non_empty_str, require_number_in_range, require_type
-
-SUPERSAMPLE = 4
 
 
 def render_capsule(width: int, height: int, color: str) -> Image.Image:
@@ -32,17 +30,8 @@ def render_capsule(width: int, height: int, color: str) -> Image.Image:
 	Returns:
 		PIL.Image.Image: The bar, mode "RGBA", on a transparent background.
 	"""
-	width = max(1, int(width))
 	height = max(1, int(height))
-	require_non_empty_str(color, "color")
-
-	image = Image.new("RGBA", (width * SUPERSAMPLE, height * SUPERSAMPLE), (0, 0, 0, 0))
-	ImageDraw.Draw(image).rounded_rectangle(
-		(0, 0, width * SUPERSAMPLE - 1, height * SUPERSAMPLE - 1),
-		radius=height * SUPERSAMPLE / 2.0,
-		fill=color,
-	)
-	return image.resize((width, height), Image.LANCZOS)
+	return rounded_fill(width, height, color, height / 2.0)
 
 
 class CapsuleBar:

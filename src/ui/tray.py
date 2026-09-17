@@ -1,44 +1,35 @@
 """The notification area icons and the menu they share.
 
 One icon is drawn per usage the user has chosen to display, so several readings
-can sit side by side in the taskbar. Adding and removing icons is what a
+can sit side by side in the taskbar, each one a ring in the color of the service
+it belongs to. Adding and removing icons is what a
 selection change means here: the manager compares the wanted set against the
 icons already running and creates, updates or retires each one.
 
-Every icon carries the same menu, which lists all available usages as check
-items. The menu is generated at each opening rather than built once, because the
-usages an account reports change between readings. Opening the panel is a hidden
-default item: it is what a left click invokes, and it is not drawn in the menu.
+Windows would draw the menu of an icon itself, in the system style. It is drawn
+by the widget instead, so a right click is caught here and reported rather than
+handed to the shell, and the only item left with the shell is a hidden one: it
+is what a left click invokes and it is never drawn.
 """
 
 from __future__ import annotations
 
+import ctypes
 import threading
+from ctypes import wintypes
 from typing import Callable, NamedTuple
 
 import pystray
+from pystray._util import win32
 
+from ..providers import Provider
 from ..render.icon import render_icon
-from ..usage.snapshot import LIMIT_GROUP, PRODUCT_GROUP
-from ..validation import require_non_empty_str, require_number_in_range, require_positive_int, require_type
+from ..validation import require_number_in_range, require_positive_int, require_type
+from ..system import small_icon_size
 
-ICON_SIZE = 64
+ICON_SIZE = 0
 TOOLTIP_LIMIT = 127
-
-
-class MenuOption(NamedTuple):
-	"""One usage offered in the menu.
-
-	Attributes:
-		key: Stable identifier of the usage. str.
-		label: Name shown in the menu. str.
-		group: Either "limit" or "product", which decides where the separator
-			falls. str.
-	"""
-
-	key: str
-	label: str
-	group: str
+ACTIVATE_ITEM = "Open"
 
 
 class IconReading(NamedTuple):
@@ -56,109 +47,110 @@ class IconReading(NamedTuple):
 	tooltip: str
 
 
+class _Icon(pystray.Icon):
+	"""A tray icon that reports its right click instead of opening a menu."""
+
+	def __init__(self, *args, on_menu: Callable[[int, int], None], **kwargs) -> None:
+		"""Create the icon and remember who to tell about a right click.
+
+		Args:
+			*args: Passed through to pystray.
+			on_menu: Called with the pointer position when the icon is right
+				clicked. Callable taking two ints and returning None.
+			**kwargs: Passed through to pystray.
+
+		Returns:
+			None.
+		"""
+		super().__init__(*args, **kwargs)
+		self._on_menu = on_menu
+
+	def _on_notify(self, wparam: int, lparam: int) -> None:
+		"""Handle a mouse message on the icon.
+
+		A right click is taken over so the widget can draw its own menu; every
+		other message is left to pystray, which is what still makes a left click
+		open the panel.
+
+		Args:
+			wparam: The message parameter pystray passes through. int.
+			lparam: Which mouse message this is. int.
+
+		Returns:
+			None.
+		"""
+		if lparam == win32.WM_RBUTTONUP:
+			point = wintypes.POINT()
+			ctypes.windll.user32.GetCursorPos(ctypes.byref(point))
+			self._on_menu(point.x, point.y)
+			return
+		super()._on_notify(wparam, lparam)
+
+
 class TrayIcons:
 	"""A set of notification area icons, one per displayed usage."""
 
 	def __init__(
 		self,
-		provider_key: str,
+		provider: Provider,
 		on_activate: Callable[[], None],
-		on_toggle: Callable[[str], None],
-		on_quit: Callable[[], None],
+		on_menu: Callable[[int, int], None],
 		icon_size: int = ICON_SIZE,
 	) -> None:
 		"""Create the manager with no icons showing yet.
 
 		Args:
-			provider_key: Key of the service being reported on, which prefixes
-				every icon name so two instances of the widget can run side by
-				side. str, non-empty.
+			provider: The service being reported on. Its key prefixes every icon
+				name, so two instances of the widget can run side by side, and its
+				color is what the rings are drawn in. Provider.
 			on_activate: Called on a left click, to open the panel. Callable
 				taking no arguments and returning None.
-			on_toggle: Called with the key of the usage whose check mark the user
-				clicked. Callable taking one str and returning None.
-			on_quit: Called when the user picks "Quit". Callable taking no
-				arguments and returning None.
-			icon_size: Edge length in pixels of each rendered icon bitmap. int,
-				greater than 0.
+			on_menu: Called with the pointer position when an icon is right
+				clicked, so the widget can open its own menu there. Callable
+				taking two ints and returning None.
+			icon_size: Edge length in pixels of each rendered icon bitmap, or 0 to
+				draw at the size the shell displays them. int, 0 or more.
 
 		Returns:
 			None.
 		"""
 		callbacks = (
 			("on_activate", on_activate),
-			("on_toggle", on_toggle),
-			("on_quit", on_quit),
+			("on_menu", on_menu),
 		)
 		for name, callback in callbacks:
 			if not callable(callback):
 				raise TypeError(f"{name} must be callable")
-		require_positive_int(icon_size, "icon_size")
-		require_non_empty_str(provider_key, "provider_key")
+		self._icon_size = icon_size or small_icon_size()
+		require_positive_int(self._icon_size, "icon_size")
+		require_type(provider, Provider, "provider")
 
-		self._provider_key = provider_key
+		self._provider = provider
 		self._on_activate = on_activate
-		self._on_toggle = on_toggle
-		self._on_quit = on_quit
-		self._icon_size = icon_size
+		self._on_menu = on_menu
 
 		self._icons: dict[str, pystray.Icon] = {}
 		self._threads: dict[str, threading.Thread] = {}
-		self._options: tuple[MenuOption, ...] = ()
-		self._selected: frozenset[str] = frozenset()
 		self._started = False
 
-	def _menu_items(self):
-		"""Yield the menu shown on a right click, rebuilt at every opening.
+	def _hidden_menu(self) -> pystray.Menu:
+		"""Return the only menu the shell is given: one item, never drawn.
+
+		pystray finds the default item among all of them but draws only the
+		visible ones, so an invisible default leaves a left click working while
+		giving the shell nothing to pop up.
 
 		Returns:
-			Iterator of pystray.MenuItem: The hidden activation item, one check
-			item per available usage, and the quit command.
+			pystray.Menu: The menu to attach to every icon.
 		"""
-		# Hidden, yet still the item a left click invokes: pystray looks for the
-		# default among all items and draws only the visible ones.
-		yield pystray.MenuItem(
-			"Show all usage",
-			lambda _icon, _item: self._on_activate(),
-			default=True,
-			visible=False,
+		return pystray.Menu(
+			pystray.MenuItem(
+				ACTIVATE_ITEM,
+				lambda _icon, _item: self._on_activate(),
+				default=True,
+				visible=False,
+			)
 		)
-		for group in (LIMIT_GROUP, PRODUCT_GROUP):
-			options = [option for option in self._options if option.group == group]
-			if not options:
-				continue
-			for option in options:
-				yield pystray.MenuItem(
-					option.label,
-					self._toggle_action(option.key),
-					checked=self._checked_probe(option.key),
-				)
-			yield pystray.Menu.SEPARATOR
-		yield pystray.MenuItem("Quit", lambda _icon, _item: self._on_quit())
-
-	def _toggle_action(self, key: str) -> Callable[[object, object], None]:
-		"""Return the menu action that shows or hides one usage.
-
-		Args:
-			key: Key of the usage the item stands for. str, non-empty.
-
-		Returns:
-			Callable: The action pystray calls when that item is clicked.
-		"""
-		require_non_empty_str(key, "key")
-		return lambda _icon, _item: self._on_toggle(key)
-
-	def _checked_probe(self, key: str) -> Callable[[object], bool]:
-		"""Return the predicate that marks one usage as displayed.
-
-		Args:
-			key: Key of the usage the item stands for. str, non-empty.
-
-		Returns:
-			Callable: The predicate pystray calls to draw the check mark.
-		"""
-		require_non_empty_str(key, "key")
-		return lambda _item: key in self._selected
 
 	def _create_icon(self, reading: IconReading) -> pystray.Icon:
 		"""Create and show one icon for a usage.
@@ -170,11 +162,12 @@ class TrayIcons:
 			pystray.Icon: The icon, already running on its own thread when the
 			manager has been started.
 		"""
-		icon = pystray.Icon(
-			f"{self._provider_key}-usage-{reading.key}",
-			icon=render_icon(reading.percent, self._icon_size),
+		icon = _Icon(
+			f"{self._provider.key}-usage-{reading.key}",
+			icon=render_icon(reading.percent, self._icon_size, self._provider.accent),
 			title=reading.tooltip[:TOOLTIP_LIMIT],
-			menu=pystray.Menu(self._menu_items),
+			menu=self._hidden_menu(),
+			on_menu=self._on_menu,
 		)
 		self._icons[reading.key] = icon
 		if self._started:
@@ -191,7 +184,7 @@ class TrayIcons:
 		Returns:
 			None.
 		"""
-		thread = threading.Thread(target=icon.run, name=f"tray-{self._provider_key}-{key}", daemon=True)
+		thread = threading.Thread(target=icon.run, name=f"tray-{self._provider.key}-{key}", daemon=True)
 		self._threads[key] = thread
 		thread.start()
 
@@ -222,27 +215,6 @@ class TrayIcons:
 		for key, icon in self._icons.items():
 			self._run(key, icon)
 
-	def set_menu(self, options: tuple[MenuOption, ...], selected: frozenset[str]) -> None:
-		"""Replace what the menu offers and how it is marked.
-
-		Args:
-			options: Every usage the account currently reports, in menu order.
-				tuple of MenuOption.
-			selected: Keys of the usages being displayed. frozenset of str.
-
-		Returns:
-			None.
-		"""
-		require_type(options, tuple, "options")
-		require_type(selected, frozenset, "selected")
-
-		changed = (options, selected) != (self._options, self._selected)
-		self._options = options
-		self._selected = selected
-		if changed:
-			for icon in self._icons.values():
-				icon.update_menu()
-
 	def sync(self, readings: tuple[IconReading, ...]) -> None:
 		"""Make the icons on screen match the readings, creating and retiring as needed.
 
@@ -266,7 +238,7 @@ class TrayIcons:
 			if icon is None:
 				self._create_icon(reading)
 				continue
-			icon.icon = render_icon(reading.percent, self._icon_size)
+			icon.icon = render_icon(reading.percent, self._icon_size, self._provider.accent)
 			icon.title = reading.tooltip[:TOOLTIP_LIMIT]
 
 	def stop(self) -> None:

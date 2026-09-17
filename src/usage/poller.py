@@ -125,6 +125,17 @@ class UsagePoller:
 		self._thread = threading.Thread(target=self._run, name="usage-poller", daemon=True)
 		self._thread.start()
 
+	def refresh(self) -> None:
+		"""Take the next reading now instead of waiting out the interval.
+
+		Used when something the reading depends on has changed under it, such as
+		the sign-in being read from a different folder.
+
+		Returns:
+			None. Does nothing when the poller is not running.
+		"""
+		self._wake.set()
+
 	def stop(self, timeout: float = 5.0) -> None:
 		"""Stop the worker thread and wait briefly for it to finish.
 

@@ -3,3 +3,22 @@ __pycache__/
 
 .claude/
 CLAUDE.md
+
+# The widget writes both of these itself, to the application data directory
+# rather than to the tree, so these only matter if a copy is ever made here.
+# credentials.json holds the tokens the widget's own sign-in obtained, which are
+# the sign-in itself and must never leave the machine.
+settings.json
+credentials.json
+
+# The credential files the provider tools keep in the home directory. The widget
+# no longer reads them, but the names stay ignored in case one is ever copied
+# next to the code while debugging.
+.credentials.json
+auth.json
+*.credentials.json
+*.auth.json
+*.bak
+*.tmp
+.env
+.env.*

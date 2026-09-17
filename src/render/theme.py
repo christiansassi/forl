@@ -2,7 +2,7 @@
 
 Two color ideas live here. A brand accent marks the parts of the interface that
 belong to the product, the mark, the refresh control and the spinner; it comes
-from the provider, so the panel is orange for Claude and green for ChatGPT. The
+from the provider, so the panel is orange for Claude and white for ChatGPT. The
 usage ramp is a separate scale that runs from green to red with the percentage,
 so a bar says how close to its limit it is by color alone, without anyone having
 to read the number.
@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..validation import require_member, require_number_in_range, require_positive_int
+from ..validation import require_member, require_non_empty_str, require_number_in_range, require_positive_int
 
 # Stops of the usage ramp as (percentage, (red, green, blue)). A value between
 # two stops is mixed from them, so the bar shifts continuously rather than
@@ -34,12 +34,24 @@ TRACK_OPACITY = 0.22
 ICON_LABEL = (255, 255, 255, 255)
 TRANSPARENT = (0, 0, 0, 0)
 
+# Opacity of the switch track when it is off, laid over the surface.
+SWITCH_OFF_OPACITY = 0.22
+
+# Contrast below which white stops reading against a color and the dark
+# surface is used instead. Measured as the WCAG ratio, whose floor for large
+# bold text is 3 to 1; a mark larger than text carries a little less.
+MIN_LIGHT_CONTRAST = 2.5
+
 SURFACE_BASE = "#1c1c1e"
 
 # Label colors, brightest first, matching label, secondary and tertiary.
 LABEL_PRIMARY = "#ffffff"
 LABEL_SECONDARY = "#a1a1a6"
 LABEL_TERTIARY = "#6e6e73"
+
+# What a refusal is written in: the red the usage ramp ends at, so the interface
+# keeps one red.
+LABEL_ERROR = "#{:02x}{:02x}{:02x}".format(*USAGE_RAMP[-1][1])
 
 UI_FONT_FAMILY = "Segoe UI"
 
@@ -131,6 +143,68 @@ def text_style(name: str) -> tuple[str, int, str]:
 	return (UI_FONT_FAMILY, size, weight)
 
 
+def hex_to_rgb(color: str) -> tuple[int, int, int]:
+	"""Return a hexadecimal color as its three components.
+
+	Args:
+		color: The color as a "#rrggbb" string, with or without the hash. str,
+			non-empty.
+
+	Returns:
+		tuple[int, int, int]: The red, green and blue components, each 0 to 255.
+	"""
+	require_non_empty_str(color, "color")
+	value = color.lstrip("#")
+	return tuple(int(value[index : index + 2], 16) for index in (0, 2, 4))
+
+
+def relative_luminance(color: tuple[int, int, int]) -> float:
+	"""Return the relative luminance of a color, as the sRGB definition gives it.
+
+	Args:
+		color: The red, green and blue components, each 0 to 255. tuple of three
+			ints.
+
+	Returns:
+		float: The luminance, 0 for black and 1 for white.
+	"""
+	channels = []
+	for value in color[:3]:
+		share = value / 255.0
+		channels.append(share / 12.92 if share <= 0.04045 else ((share + 0.055) / 1.055) ** 2.4)
+	return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+
+def carries_light_text(color: tuple[int, int, int]) -> bool:
+	"""Return whether white reads against a color.
+
+	Used wherever something white is laid over a colored fill, which is the
+	reading on a tray icon and the knob of a switch: one accent is orange and
+	carries white, the other is white and does not.
+
+	Args:
+		color: The fill color as red, green and blue, each 0 to 255. tuple of
+			three ints.
+
+	Returns:
+		bool: True when white has enough contrast against it.
+	"""
+	return 1.05 / (relative_luminance(color) + 0.05) >= MIN_LIGHT_CONTRAST
+
+
+def on_accent(accent: str) -> str:
+	"""Return the color to lay over a brand accent so it stays visible.
+
+	Args:
+		accent: The accent as a "#rrggbb" string. str, non-empty.
+
+	Returns:
+		str: White when the accent is dark enough to carry it, otherwise the
+		panel surface.
+	"""
+	return LABEL_PRIMARY if carries_light_text(hex_to_rgb(accent)) else SURFACE_BASE
+
+
 def mix_hex(background: str, foreground: str, amount: float) -> str:
 	"""Return the color that results from laying one color over another.
 
@@ -146,8 +220,8 @@ def mix_hex(background: str, foreground: str, amount: float) -> str:
 		str: The blended color as a "#rrggbb" string.
 	"""
 	require_number_in_range(amount, 0.0, 1.0, "amount")
-	lower = tuple(int(background.lstrip("#")[index : index + 2], 16) for index in (0, 2, 4))
-	upper = tuple(int(foreground.lstrip("#")[index : index + 2], 16) for index in (0, 2, 4))
+	lower = hex_to_rgb(background)
+	upper = hex_to_rgb(foreground)
 	blended = tuple(int(round(low + (high - low) * amount)) for low, high in zip(lower, upper))
 	return "#{:02x}{:02x}{:02x}".format(*blended)
 

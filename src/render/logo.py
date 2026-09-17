@@ -18,6 +18,7 @@ from pathlib import Path
 from PIL import Image, ImageChops, ImageDraw
 
 from ..validation import require_non_empty_str, require_positive_int
+from .curves import cubic_points
 from .theme import TRANSPARENT
 
 ASSETS_DIR = Path(__file__).resolve().parents[2] / "assets"
@@ -126,36 +127,6 @@ class _PathReader:
 		value = self._data[self._index] == "1"
 		self._index += 1
 		return value
-
-
-def _cubic_points(
-	start: tuple[float, float],
-	first: tuple[float, float],
-	second: tuple[float, float],
-	end: tuple[float, float],
-) -> list[tuple[float, float]]:
-	"""Flatten a cubic Bezier curve into a list of points.
-
-	Args:
-		start: Where the curve begins as (x, y). tuple of two floats.
-		first: The control point leaving the start as (x, y). tuple of two floats.
-		second: The control point entering the end as (x, y). tuple of two floats.
-		end: Where the curve ends as (x, y). tuple of two floats.
-
-	Returns:
-		list of tuple[float, float]: The sampled points, excluding the start.
-	"""
-	points = []
-	for step in range(1, CURVE_SEGMENTS + 1):
-		t = step / CURVE_SEGMENTS
-		u = 1.0 - t
-		points.append(
-			(
-				u * u * u * start[0] + 3 * u * u * t * first[0] + 3 * u * t * t * second[0] + t * t * t * end[0],
-				u * u * u * start[1] + 3 * u * u * t * first[1] + 3 * u * t * t * second[1] + t * t * t * end[1],
-			)
-		)
-	return points
 
 
 def _arc_points(
@@ -291,7 +262,7 @@ def flatten_path(data: str) -> list[list[tuple[float, float]]]:
 				)
 			second = reader.point(origin)
 			end = reader.point(origin)
-			current_points.extend(_cubic_points(current, first, second, end))
+			current_points.extend(cubic_points(current, first, second, end, CURVE_SEGMENTS))
 			previous_control = second
 			current = end
 			continue

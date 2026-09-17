@@ -1,18 +1,25 @@
-"""Read ChatGPT usage through the login Codex stores on this machine.
+"""Read ChatGPT usage with the sign-in the widget made for itself.
 
-Calls the usage endpoint of the Codex backend with the access token from
-~/.codex/auth.json. The response reports two rolling windows, a five hour
-primary and a seven day secondary, which map onto the session and weekly windows
-the interface already knows. ChatGPT reports no split by product, so the panel
-simply has no product section for this provider.
+Calls the usage endpoint of the Codex backend with a token this widget obtained
+in the browser and keeps in its own file, renewing it when it is close to
+running out. The response reports two rolling windows, a five hour primary and a
+seven day secondary, which map onto the session and weekly windows the interface
+already knows, and it names the plan itself, so no second request is needed.
+ChatGPT reports no split by product, so the panel simply has no product section
+for this provider.
+
+Every usage request also names the account, which the sign-in reports in the
+claims of the identity token rather than as a field of its own.
 """
 
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, Callable
 
-from ..usage.errors import CredentialsError
+from ..auth import jwt, oauth, store
+from ..auth.oauth import OAuthClient
+from ..usage.errors import CredentialsError, UsageAuthError, UsageRequestError
 from ..usage.http import fetch_json
 from ..usage.snapshot import (
 	SESSION_KEY,
@@ -25,42 +32,150 @@ from ..usage.snapshot import (
 	now_utc,
 	parse_epoch,
 )
-from .local_auth import home_file, jwt_expiry, read_auth_file
+
+KEY = "chatgpt"
+LABEL = "ChatGPT"
 
 USAGE_URL = "https://chatgpt.com/backend-api/codex/usage"
 USER_AGENT = "chatgpt-usage-widget/1.0"
 ORIGINATOR = "codex_cli_rs"
 
-CONFIG_ENV_VAR = "CODEX_HOME"
-CONFIG_DIR = ".codex"
-AUTH_FILE = "auth.json"
-SIGN_IN_HINT = "codex login"
+# The port is not a free choice: this is the one the provider accepts for this
+# client, so a sign-in cannot start while something else holds it.
+OAUTH = OAuthClient(
+	key=KEY,
+	label=LABEL,
+	authorize_url="https://auth.openai.com/oauth/authorize",
+	token_url="https://auth.openai.com/oauth/token",
+	# Public identifier of the application these endpoints were built for. A
+	# client that runs on the user's machine can hold no secret, which is what
+	# the proof key in the flow is for.
+	client_id="app_EMoamEEZ73f0CkXaXp7hrann",
+	# openid for the identity token, which is the only place the account this
+	# usage is billed against is named; offline_access for the refresh token,
+	# without which a sign-in lasts an hour; email for the address the settings
+	# show. The tool these endpoints were built for also asks for profile, whose
+	# only use here would be a display name to fall back on, so it is left out.
+	scope="openid email offline_access",
+	redirect_port=1455,
+	redirect_path="/auth/callback",
+	# Without the first, the identity token names no account and the usage
+	# endpoint has nothing to bill the request against.
+	authorize_extras=(
+		("id_token_add_organizations", "true"),
+		("codex_cli_simplified_flow", "true"),
+	),
+	headers=(("User-Agent", USER_AGENT), ("originator", ORIGINATOR)),
+)
 
-EXPIRY_MARGIN_SECONDS = 60
+# Where the identity token keeps what this provider needs and a standard claim
+# set does not carry.
+AUTH_CLAIM = "https://api.openai.com/auth"
+ACCOUNT_ID_CLAIM = "chatgpt_account_id"
+
+# The usage endpoint answers 403 for two quite different reasons: a sign-in
+# that has really gone, and a request it declines to serve for the moment. A
+# token it has only just issued is refused for three to four seconds, and the
+# endpoint also refuses the odd request for no reason it gives, in bursts, so
+# a refused reading is tried again over a few seconds before it is believed.
+AUTH_RETRY_ATTEMPTS = 5
+AUTH_RETRY_DELAY_SECONDS = 1.0
+
+REFUSED_MESSAGE = "The usage endpoint refused the request."
+
+
+def _identity(answer: dict[str, Any]) -> dict[str, Any]:
+	"""Return the claims of the identity token in a token endpoint answer.
+
+	Args:
+		answer: The token endpoint's answer. dict.
+
+	Returns:
+		dict[str, Any]: The claims, empty when the answer carries no identity
+		token or it cannot be decoded.
+	"""
+	identity = answer.get("id_token")
+	return jwt.claims(identity) if isinstance(identity, str) and identity.strip() else {}
+
+
+def _account_id(claims: dict[str, Any]) -> str:
+	"""Return the account every usage request must be made against.
+
+	Args:
+		claims: The claims of the identity token. dict.
+
+	Returns:
+		str: The account id, or an empty string when the claims carry none.
+	"""
+	section = claims.get(AUTH_CLAIM)
+	value = section.get(ACCOUNT_ID_CLAIM) if isinstance(section, dict) else None
+	return value if isinstance(value, str) else ""
+
+
+def _account_name(claims: dict[str, Any]) -> str:
+	"""Return who is signed in, as the settings should name them.
+
+	Args:
+		claims: The claims of the identity token. dict.
+
+	Returns:
+		str: The email address, falling back to the name, or an empty string
+		when the claims carry neither.
+	"""
+	for field in ("email", "name"):
+		value = claims.get(field)
+		if isinstance(value, str) and value.strip():
+			return value.strip()
+	return ""
+
+
+def sign_in(on_address: Callable[[str, bool], None]) -> str:
+	"""Sign in to ChatGPT in the browser and store what comes back.
+
+	Blocks until the user finishes in the browser or gives up, so it belongs on
+	a thread of its own.
+
+	Args:
+		on_address: Called once with the address to sign in at and whether a
+			browser was opened at it, so the address can be offered to the user
+			when it was not. Callable taking one str and one bool and returning
+			None.
+
+	Returns:
+		str: Who is now signed in, as the settings should name them.
+
+	Raises:
+		CredentialsError: When the sign-in was not completed or was refused.
+		UsageRequestError: When the token endpoint could not be reached.
+	"""
+	answer = oauth.sign_in(OAUTH, on_address)
+	token = answer.get("access_token")
+	if not isinstance(token, str) or not token.strip():
+		raise CredentialsError(oauth.REJECTED_MESSAGE)
+
+	refresh = answer.get("refresh_token")
+	claims = _identity(answer)
+	tokens = store.Tokens(
+		access_token=token,
+		refresh_token=refresh if isinstance(refresh, str) else "",
+		expires_at=oauth.expires_at(answer),
+		account=_account_name(claims),
+		# The plan is left out because the usage response names it, so keeping
+		# it here would be a second copy of something already arriving.
+		extra={"account_id": _account_id(claims)},
+	)
+	store.save(KEY, tokens)
+	return tokens.account
 
 
 def _load_login() -> tuple[str, str]:
-	"""Read the access token and account id Codex has stored.
+	"""Return a usable token and the account it belongs to, renewing if due.
 
 	Returns:
 		tuple[str, str]: The bearer token and the ChatGPT account id.
 	"""
-	path = home_file(CONFIG_ENV_VAR, CONFIG_DIR, AUTH_FILE)
-	document = read_auth_file(path, SIGN_IN_HINT)
-
-	tokens = document.get("tokens")
-	if not isinstance(tokens, dict):
-		raise CredentialsError(f"Not signed in. Run '{SIGN_IN_HINT}' to sign in.")
-	token = tokens.get("access_token")
-	if not isinstance(token, str) or not token.strip():
-		raise CredentialsError(f"Not signed in. Run '{SIGN_IN_HINT}' to sign in.")
-
-	expiry = jwt_expiry(token)
-	if expiry and expiry - time.time() < EXPIRY_MARGIN_SECONDS:
-		raise CredentialsError(f"Sign-in expired. Run '{SIGN_IN_HINT}' to sign in again.")
-
-	account_id = tokens.get("account_id")
-	return token, account_id if isinstance(account_id, str) else ""
+	tokens = oauth.usable(OAUTH)
+	return tokens.access_token, tokens.extra.get("account_id", "")
 
 
 def _window(section: Any, key: str, label: str) -> UsageWindow | None:
@@ -120,8 +235,21 @@ def parse(document: dict[str, Any]) -> UsageSnapshot:
 def read() -> UsageSnapshot:
 	"""Take one ChatGPT usage reading.
 
+	A refusal is only reported as an expired sign-in when the token says it has
+	expired. The endpoint refuses perfectly good tokens as well, in bursts and
+	for a few seconds after issuing one, and taking it at its word would tell
+	the user their sign-in had run out and open a sign-in they do not need. A
+	refusal that the token contradicts is reported as what it is, a request
+	that did not go through, which leaves the last reading on screen and says
+	nothing.
+
 	Returns:
 		UsageSnapshot: The current reading.
+
+	Raises:
+		UsageAuthError: When the sign-in has run out and must be done again.
+		UsageRequestError: When the endpoint could not be reached or refused a
+			token that has not expired.
 	"""
 	token, account_id = _load_login()
 	headers = {
@@ -132,4 +260,16 @@ def read() -> UsageSnapshot:
 	}
 	if account_id:
 		headers["chatgpt-account-id"] = account_id
-	return parse(fetch_json(USAGE_URL, headers, SIGN_IN_HINT))
+
+	for attempt in range(AUTH_RETRY_ATTEMPTS):
+		if attempt:
+			time.sleep(AUTH_RETRY_DELAY_SECONDS)
+		try:
+			return parse(fetch_json(USAGE_URL, headers))
+		except UsageAuthError:
+			continue
+
+	expiry = jwt.expiry(token)
+	if expiry and expiry > time.time():
+		raise UsageRequestError(REFUSED_MESSAGE)
+	raise UsageAuthError(oauth.EXPIRED_MESSAGE)
