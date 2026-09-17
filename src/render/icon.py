@@ -5,11 +5,15 @@ that fills from the bottom as the window is spent, with the reading across the
 middle of it. The column is drawn in the color of the service being reported on,
 which is what tells two widgets apart at a glance, since a cell carries no label.
 
-The reading is white, except where white would disappear into the fill. A fill
-too pale to carry white text has the reading written twice instead, light above
-the level and dark below it, so it reads against the empty part of the tank and
-the filled part alike. That is what a service colored white needs and a service
-colored orange does not.
+The reading is white on a column dark enough to carry white. A column too pale
+for that, which is what a service colored white has, takes a dark reading
+instead, and takes it throughout rather than switching color at the level: a
+number half one color and half the other reads as a mistake, not as a level.
+
+Such a column also gives up the translucent empty part. Translucency means
+taking a color from the taskbar behind it, and a dark reading needs something
+light to sit on whichever taskbar that is, so the empty part is drawn opaque, a
+dimmed version of the color the full part is drawn in.
 
 Drawing happens on a supersampled canvas that is reduced at the end, which keeps
 the column and the digits smooth at icon sizes.
@@ -20,7 +24,15 @@ from __future__ import annotations
 from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 from ..validation import require_non_empty_str, require_number_in_range, require_positive_int
-from .theme import SURFACE_BASE, TRACK_OPACITY, TRANSPARENT, carries_light_text, hex_to_rgb, load_font
+from .theme import (
+	SURFACE_BASE,
+	TRACK_OPACITY,
+	TRANSPARENT,
+	carries_light_text,
+	hex_to_rgb,
+	load_font,
+	mix_hex,
+)
 
 SUPERSAMPLE = 8
 
@@ -32,6 +44,11 @@ DIGITS_HEIGHT_RATIO = 0.46
 DIGITS_WIDTH_RATIO = 0.92
 
 LIGHT_TEXT = (255, 255, 255, 255)
+
+# How far the empty part of a pale column is taken toward the surface color.
+# Enough to read as empty beside the full part, and light enough to carry the
+# dark reading that such a column needs.
+PALE_TRACK_MIX = 0.42
 
 # What the number reads before the first reading has arrived. A dash has far
 # less ink than a digit, so a digit is what its size is measured against.
@@ -152,6 +169,7 @@ def render_icon(percent: float | None, size: int, color: str) -> Image.Image:
 	require_positive_int(size, "size")
 
 	accent = _rgba(color)
+	carries_white = carries_light_text(accent[:3])
 	canvas_size = size * SUPERSAMPLE
 	image = Image.new("RGBA", (canvas_size, canvas_size), TRANSPARENT)
 
@@ -160,8 +178,13 @@ def render_icon(percent: float | None, size: int, color: str) -> Image.Image:
 	fraction = 0.0 if percent is None else percent / 100.0
 	level = box[3] - (box[3] - box[1]) * fraction
 
+	track = (
+		accent[:3] + (int(round(255 * TRACK_OPACITY)),)
+		if carries_white
+		else _rgba(mix_hex(color, SURFACE_BASE, PALE_TRACK_MIX))
+	)
 	column = Image.new("RGBA", (canvas_size, canvas_size), TRANSPARENT)
-	ImageDraw.Draw(column).rounded_rectangle(box, radius=radius, fill=accent[:3] + (int(round(255 * TRACK_OPACITY)),))
+	ImageDraw.Draw(column).rounded_rectangle(box, radius=radius, fill=track)
 	image.alpha_composite(column)
 
 	if fraction > 0.0:
@@ -173,8 +196,8 @@ def render_icon(percent: float | None, size: int, color: str) -> Image.Image:
 
 	text = NO_READING if percent is None else f"{int(round(percent))}"
 	reference = NO_READING_REFERENCE if percent is None else ""
-	image.alpha_composite(_text_layer(canvas_size, text, reference, LIGHT_TEXT))
-	if fraction > 0.0 and not carries_light_text(accent[:3]):
-		image.alpha_composite(_below(_text_layer(canvas_size, text, reference, _rgba(SURFACE_BASE)), level))
+	image.alpha_composite(
+		_text_layer(canvas_size, text, reference, LIGHT_TEXT if carries_white else _rgba(SURFACE_BASE))
+	)
 
 	return image.resize((size, size), Image.LANCZOS)

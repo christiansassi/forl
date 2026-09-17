@@ -39,7 +39,7 @@ from ..usage.errors import CredentialsError, UsageRequestError
 from ..usage.poller import PollResult, UsagePoller
 from ..usage.snapshot import LIMIT_GROUP, PRODUCT_GROUP, SESSION_KEY, UsageSnapshot
 from ..validation import require_non_empty_str, require_positive_int, require_type
-from .formatting import format_reset_at
+from .formatting import format_icon_tooltip
 from .menu import SEPARATOR, MenuRow, TrayMenu
 from .panel import SETTINGS_VIEW, Panel
 from .tray import IconReading, TrayIcons
@@ -52,7 +52,6 @@ QUIT_KEY = "quit"
 QUIT_LABEL = "Quit"
 SETTINGS_KEY = "settings"
 SETTINGS_LABEL = "Settings"
-NO_RESET_TOOLTIP = "No reset time reported"
 
 SIGNING_IN_TEXT = "Signing in. Finish in the browser."
 NO_BROWSER_TEXT = "No browser opened. Use the address below."
@@ -525,7 +524,7 @@ class WidgetApp:
 		)
 
 	def _tooltip(self, key: str) -> str:
-		"""Return the hover text for one icon: its usage and when that resets.
+		"""Return the hover text for one icon: its reading and which limit it is.
 
 		Hovering an icon is a question about the limit, not about the widget, so a
 		failed attempt does not change the answer. The exception is a sign-in
@@ -536,7 +535,7 @@ class WidgetApp:
 			key: Key of the usage the icon shows. str, non-empty.
 
 		Returns:
-			str: Text such as "Current session: Resets at 2:00 PM".
+			str: Text such as "34% - Current session".
 		"""
 		require_non_empty_str(key, "key")
 		if self._sign_in_message:
@@ -544,8 +543,7 @@ class WidgetApp:
 		metric = self._snapshot.metric(key) if self._snapshot is not None else None
 		if metric is None:
 			return f"{self._provider.label} usage: {LOADING_TOOLTIP}"
-		reset = format_reset_at(metric.resets_at) or NO_RESET_TOOLTIP
-		return f"{metric.label}: {reset}"
+		return format_icon_tooltip(metric.percent, metric.label)
 
 	def _toggle_panel(self) -> None:
 		"""Open the panel, or dismiss it when it is already open.

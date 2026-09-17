@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from ..usage.snapshot import UsageWindow
-from ..validation import require_number_in_range, require_type
+from ..validation import require_non_empty_str, require_number_in_range, require_type
 
 
 def format_percent(percent: float) -> str:
@@ -25,6 +25,24 @@ def format_percent(percent: float) -> str:
 	"""
 	require_number_in_range(percent, 0.0, 100.0, "percent")
 	return f"{int(round(percent))}%"
+
+
+def format_icon_tooltip(percent: float, label: str) -> str:
+	"""Return the hover text for one notification area icon.
+
+	The reading comes first, because how much is left is the question a hover
+	asks, and the name follows it, because several icons may be up at once and
+	a number alone does not say which limit it belongs to.
+
+	Args:
+		percent: Share of the window already used, 0 to 100. float.
+		label: Name of the window, such as "Current session". str, non-empty.
+
+	Returns:
+		str: Text such as "34% - Current session".
+	"""
+	require_non_empty_str(label, "label")
+	return f"{format_percent(percent)} - {label}"
 
 
 def local_minute(moment: datetime) -> datetime:
