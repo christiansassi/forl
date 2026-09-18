@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+		Not sandboxed, on purpose. The app is not distributed through the Mac
+		App Store, so the sandbox is a choice rather than a requirement, and
+		three things it costs are things this app needs: reading the sign-ins
+		the widget it replaces left in Application Support, holding a loopback
+		port for the browser to redirect to, and registering a login item that
+		points at wherever the user actually keeps the app.
+
+		The widget extension is sandboxed, because an extension always is. It
+		reads the group container and nothing else, and holds no token, so the
+		part of this app that runs under the least trust is also the part with
+		the least to lose.
+	-->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>FORLWIDGET.io.forl</string>
+	</array>
+</dict>
+</plist>

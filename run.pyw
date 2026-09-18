@@ -13,12 +13,19 @@ often for the same answer.
 A run with no sign-in stored for the service opens the browser to get one. The
 widget signs in for itself, so neither Claude Code nor Codex need be installed.
 
-The widget itself is chosen by the platform. Windows gets the notification area
-widget; macOS gets its own, which is not built yet. The two are picked apart
-here rather than inside the widget, so neither imports what the other needs.
+This is the Windows widget. macOS has an application of its own, written in
+Swift and built from the mac directory, which watches both services at once and
+puts their readings in the menu bar, on the Dock icon, in real widgets and in
+Control Center. Running this on macOS is refused rather than half served.
 
-On Windows, launch it with pythonw so no console window appears. The start on
-startup switch in the settings makes it appear at sign-in.
+The widget puts itself into the background before it draws anything, so starting
+it from a terminal gives the prompt straight back and keeps it. Whatever it has
+to say about the launch, that a copy is already running or that the platform is
+not one it serves, is said before that and reaches the terminal as usual;
+everything it says afterwards goes to a log file beside its settings.
+
+Launch it with pythonw so no console window appears. The start on startup switch
+in the settings makes it appear at sign-in.
 """
 
 from __future__ import annotations
@@ -29,10 +36,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from src.providers import CHATGPT_KEY, CLAUDE_KEY, Provider, get_provider
-from src.system import MACOS, WINDOWS, claim_single_instance, current
+from src.windows.providers import CHATGPT_KEY, CLAUDE_KEY, Provider, get_provider
+from src.windows.system import WINDOWS, claim_single_instance, current, detach
+from src.windows.validation import require_member
 
 INSTANCE_NAME_PREFIX = "usage-widget-"
+PLATFORMS = frozenset((WINDOWS,))
 ALREADY_RUNNING_STATUS = 1
 UNSUPPORTED_STATUS = 2
 
@@ -71,30 +80,25 @@ def parse_provider_key(argv: list[str]) -> str:
 	return parser.parse_args(argv).provider
 
 
-def start(provider: Provider) -> int:
-	"""Run the widget this platform has, until the user quits it.
+def start(platform: str, provider: Provider) -> int:
+	"""Run the widget of a platform, until the user quits it.
 
-	The widget is imported only once its platform is known, because each one
-	reaches for libraries the other has no use for.
+	The widget is imported only once the platform is known, so a machine with no
+	widget never reaches for the libraries one would need.
 
 	Args:
+		platform: The platform to run, which this widget serves only as WINDOWS.
+			str, non-empty.
 		provider: The service to report on. Provider.
 
 	Returns:
 		int: Process exit status.
 	"""
-	platform = current()
-	if platform == WINDOWS:
-		from src.ui.app import WidgetApp
+	require_member(platform, PLATFORMS, "platform")
+	from src.windows.ui.app import WidgetApp
 
-		WidgetApp(provider).run()
-		return 0
-	if platform == MACOS:
-		from src.ui.macos import run_widget
-
-		return run_widget(provider)
-	print(f"{sys.platform} is not a platform this widget runs on.", file=sys.stderr)
-	return UNSUPPORTED_STATUS
+	WidgetApp(provider).run()
+	return 0
 
 
 def main(argv: list[str]) -> int:
@@ -109,10 +113,19 @@ def main(argv: list[str]) -> int:
 		widget.
 	"""
 	provider = get_provider(parse_provider_key(argv))
-	if not claim_single_instance(f"{INSTANCE_NAME_PREFIX}{provider.key}"):
+	name = f"{INSTANCE_NAME_PREFIX}{provider.key}"
+	if not claim_single_instance(name):
 		print(f"{provider.label} usage is already running.", file=sys.stderr)
 		return ALREADY_RUNNING_STATUS
-	return start(provider)
+	platform = current()
+	if platform not in PLATFORMS:
+		print(f"{sys.platform} is not a platform this widget runs on.", file=sys.stderr)
+		return UNSUPPORTED_STATUS
+	# After the claim, so a second copy still reports itself to the terminal it
+	# was started from, and before the widget, so nothing Cocoa holds is carried
+	# across the fork.
+	detach(name)
+	return start(platform, provider)
 
 
 if __name__ == "__main__":

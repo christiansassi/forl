@@ -3,6 +3,10 @@ __pycache__/
 
 .claude/
 CLAUDE.md
+AGENTS.md
+
+# What the Finder leaves behind in any directory it has been asked to show.
+.DS_Store
 
 # The widget writes both of these itself, to the application data directory
 # rather than to the tree, so these only matter if a copy is ever made here.
@@ -22,3 +26,15 @@ auth.json
 *.tmp
 .env
 .env.*
+
+# Xcode's build directory for the macOS app, and the user state it drops beside
+# the project. The project file itself is committed, so opening the app in Xcode
+# needs nothing generated first.
+src/mac/.build/
+src/mac/*.xcodeproj/xcuserdata/
+src/mac/*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# The file the macOS application keeps its sign-ins in. It is written to the
+# group container rather than here, so this only matters if a copy is ever made
+# next to the code, which is the same reason credentials.json is ignored above.
+tokens.json

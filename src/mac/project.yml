@@ -1,0 +1,69 @@
+# How the FORL app and its widget extension are put together.
+#
+# The project file Xcode opens is generated from this, so the shape of the app
+# is reviewed here as a dozen readable lines rather than in a pbxproj nobody can
+# read. The generated project is committed beside it, so opening the app in
+# Xcode needs nothing installed.
+#
+# Signing is ad-hoc on purpose: the app uses no capability that has to be
+# registered with Apple, so it builds and runs with no developer account at all.
+# An App Group is still declared, because that is how the widget reads what the
+# app writes, and macOS grants one to an ad-hoc signed app without a profile.
+
+name: FORL
+options:
+  bundleIdPrefix: io.forl
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGNING_REQUIRED: YES
+    CODE_SIGNING_ALLOWED: YES
+    DEVELOPMENT_TEAM: ""
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_HARDENED_RUNTIME: NO
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: NO
+
+targets:
+  FORL:
+    type: application
+    platform: macOS
+    sources:
+      - path: FORL
+        excludes: ["Resources/Info.plist", "Resources/FORL.entitlements"]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.forl.app
+        PRODUCT_NAME: FORL
+        INFOPLIST_FILE: FORL/Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: FORL/Resources/FORL.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        COMBINE_HIDPI_IMAGES: YES
+    dependencies:
+      - target: FORLWidgets
+        embed: true
+        codeSign: true
+
+  FORLWidgets:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: FORLWidgets
+        excludes: ["Info.plist", "FORLWidgets.entitlements"]
+      - path: FORL/Core
+      - path: FORL/Design
+      - path: FORL/Settings
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.forl.app.widgets
+        PRODUCT_NAME: FORLWidgets
+        INFOPLIST_FILE: FORLWidgets/Info.plist
+        CODE_SIGN_ENTITLEMENTS: FORLWidgets/FORLWidgets.entitlements
+        SKIP_INSTALL: YES

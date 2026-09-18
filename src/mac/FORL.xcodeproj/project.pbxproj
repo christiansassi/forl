@@ -1,0 +1,656 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0000BD05A8EA051C6C461AB7 /* SharedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D57E8852629FDFDD168C3BC6 /* SharedStore.swift */; };
+		07E45F6E84819DB9D1ACB666 /* JWT.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EE5E72986E04765BCEB5FC8 /* JWT.swift */; };
+		081BC98B1E21D05EF8B19601 /* UsageTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97492BC56608193EEF838FFF /* UsageTimeline.swift */; };
+		0FA0C3649EB2CDB75B311233 /* ProviderMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC9C867F04BFBEC29AEC1FA0 /* ProviderMark.swift */; };
+		103FD76C09C12B39342E6D9B /* HTTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4A1020C89B8FF4440DE1AE7 /* HTTP.swift */; };
+		14CA981AFBEC0916615AEA38 /* Dial.swift in Sources */ = {isa = PBXBuildFile; fileRef = 488E8D2EE9EAFA81768AE54A /* Dial.swift */; };
+		1664A0CBAE29AF14677FDE21 /* ProviderIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 444041CE48FAD3185005E089 /* ProviderIdentity.swift */; };
+		1C578D38EB00053C5E13224D /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 763D69D3D04EF783EF9D69B7 /* Theme.swift */; };
+		1DFD33B9C9A19F435067726A /* FORLApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BDB9309FC8EE8ADCC2D5E15 /* FORLApp.swift */; };
+		251AC293514445F77AAD2501 /* FORLWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA3A3E327561B6FDB52C8E79 /* FORLWidgetBundle.swift */; };
+		2B0217E5D7175CBD08DF5170 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 59F8C12550AEEAEC332651F6 /* Assets.xcassets */; };
+		30AA32264749DF2CB834E1EF /* ClaudeProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4530BC83F005D5DE6AB4BB2A /* ClaudeProvider.swift */; };
+		4E09DB9069DE568AA78E6F6E /* Provider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B6C2BE441A13FC1FB50EF57 /* Provider.swift */; };
+		4E0F8DC12E79F464C79D07D2 /* Dial.swift in Sources */ = {isa = PBXBuildFile; fileRef = 488E8D2EE9EAFA81768AE54A /* Dial.swift */; };
+		5A2FA69BFE400883387E25C1 /* LoopbackServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB6B4245747C8E1F01F21C78 /* LoopbackServer.swift */; };
+		5C81A4C4D78B5885DC5E59CA /* PanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A482459B5F8A223767B6F455 /* PanelView.swift */; };
+		68E3059AF7A8C32100B85C70 /* SharedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D57E8852629FDFDD168C3BC6 /* SharedStore.swift */; };
+		6A22F266718723DBB74C7E4C /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 763D69D3D04EF783EF9D69B7 /* Theme.swift */; };
+		6C3D77ED9A5F63B488270BE6 /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ED766A41FA6927778322472 /* Formatting.swift */; };
+		6FE1D29FE1944BB29D65F7F5 /* SelectService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 866234D177CEFD3BA4366C7C /* SelectService.swift */; };
+		729E4A5F996DCBA27138F201 /* OAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBB6AF4C697E4ACA03095399 /* OAuth.swift */; };
+		7332F7D1546FDDF1456533F1 /* HTTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4A1020C89B8FF4440DE1AE7 /* HTTP.swift */; };
+		7BE76FE9EA448447983B4579 /* UsageError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 689D12B316BB9B8C6F04B242 /* UsageError.swift */; };
+		7C9E1B3634E5E551D4071637 /* MenuBarIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = B66B92D6E8ABF5A32E3556C1 /* MenuBarIcon.swift */; };
+		7E3542684C1E33E7A9F37894 /* UsageControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C605FA94A4D12CDC30A14BE /* UsageControl.swift */; };
+		7FC305435C7876BEF1FC9D82 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 205B60DF5107C4A110B5FBFB /* SettingsView.swift */; };
+		88E9C107DF3129DCF6838D05 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 471654A02F67A9B0C79F2706 /* MenuBarController.swift */; };
+		98ABDA7F096CBDE32D63D85C /* UsageWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C2817C2C3B3BAE54912E34F /* UsageWidgets.swift */; };
+		9B458F5DAFC804ADA3650C82 /* ProviderMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC9C867F04BFBEC29AEC1FA0 /* ProviderMark.swift */; };
+		A950CE49B7CC524C572B8089 /* Preferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1612B88DE0A4F3E5215AAC53 /* Preferences.swift */; };
+		ABB30ECD1216AF6DDFB9C0FD /* PanelWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22BB7008B91D7B59F744E3FB /* PanelWindow.swift */; };
+		AFDCE4E289255A28D2B83A3C /* DockIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 733A4334E4E15F82B6AECEA4 /* DockIcon.swift */; };
+		B3E9355E96ADB6BB117AE8D6 /* ProviderIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 444041CE48FAD3185005E089 /* ProviderIdentity.swift */; };
+		B5C96FE742D9F86D1F5DAB90 /* UsageBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABFC2D09EF24209B2EDBC12A /* UsageBar.swift */; };
+		BF5614244B890AA756EAE41A /* ProviderState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2D4C4C54069C866BA4A5370 /* ProviderState.swift */; };
+		C2BD3F124E693E41D99B3B60 /* FORLWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CC3C7ED8EDB2B193F2ED702D /* FORLWidgets.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		C32EF3909EEA1D6AB26A2BEA /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ED766A41FA6927778322472 /* Formatting.swift */; };
+		D803C2E76B4DAAA80E6E22E8 /* TokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D26E3B3B7218B6CE1844170 /* TokenStore.swift */; };
+		DBA5AE287C8212EAAD72CBD6 /* PKCE.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A4B4172BCB77A371B44FF58 /* PKCE.swift */; };
+		DC55109808041C183CB62F5C /* UsageError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 689D12B316BB9B8C6F04B242 /* UsageError.swift */; };
+		E19356FDD168F8FFBBE8E967 /* CodexProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 393F289E182DEF824C243E23 /* CodexProvider.swift */; };
+		E1E0300FB47D51E5A271008F /* UsageSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26862682CA1D8286BF29B60B /* UsageSnapshot.swift */; };
+		F1782C155B5025E49FF9EE91 /* UsageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31C56D148EDEBE2F45D5D46F /* UsageStore.swift */; };
+		F434669AA7D9F04869F0B593 /* UsageBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABFC2D09EF24209B2EDBC12A /* UsageBar.swift */; };
+		F614C60C8B9DB3C72C3F9733 /* OpenFORLIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00752AECDA2BEE2AD5FBAA9 /* OpenFORLIntent.swift */; };
+		FE7A615BD7FF52C61A3F7F72 /* UsageSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26862682CA1D8286BF29B60B /* UsageSnapshot.swift */; };
+		FE7BE16670176980ECA253AB /* Preferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1612B88DE0A4F3E5215AAC53 /* Preferences.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		EA019887E6EC55C24422ED87 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CEA3FEDF7556A24B4D7F62AE /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 99DC4ECD7EE50961220B6139;
+			remoteInfo = FORLWidgets;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		B0A1504482E63CD4492BABC2 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				C2BD3F124E693E41D99B3B60 /* FORLWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		0BDB9309FC8EE8ADCC2D5E15 /* FORLApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FORLApp.swift; sourceTree = "<group>"; };
+		1612B88DE0A4F3E5215AAC53 /* Preferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Preferences.swift; sourceTree = "<group>"; };
+		1B6C2BE441A13FC1FB50EF57 /* Provider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Provider.swift; sourceTree = "<group>"; };
+		1F2D9BADC1CD69E6B80BB7FC /* FORL.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FORL.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		205B60DF5107C4A110B5FBFB /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		22BB7008B91D7B59F744E3FB /* PanelWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelWindow.swift; sourceTree = "<group>"; };
+		26862682CA1D8286BF29B60B /* UsageSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageSnapshot.swift; sourceTree = "<group>"; };
+		31C56D148EDEBE2F45D5D46F /* UsageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageStore.swift; sourceTree = "<group>"; };
+		393F289E182DEF824C243E23 /* CodexProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexProvider.swift; sourceTree = "<group>"; };
+		444041CE48FAD3185005E089 /* ProviderIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderIdentity.swift; sourceTree = "<group>"; };
+		4530BC83F005D5DE6AB4BB2A /* ClaudeProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeProvider.swift; sourceTree = "<group>"; };
+		471654A02F67A9B0C79F2706 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
+		488E8D2EE9EAFA81768AE54A /* Dial.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Dial.swift; sourceTree = "<group>"; };
+		4C2817C2C3B3BAE54912E34F /* UsageWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageWidgets.swift; sourceTree = "<group>"; };
+		4D26E3B3B7218B6CE1844170 /* TokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenStore.swift; sourceTree = "<group>"; };
+		4EE5E72986E04765BCEB5FC8 /* JWT.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JWT.swift; sourceTree = "<group>"; };
+		59F8C12550AEEAEC332651F6 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		5A4B4172BCB77A371B44FF58 /* PKCE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PKCE.swift; sourceTree = "<group>"; };
+		689D12B316BB9B8C6F04B242 /* UsageError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageError.swift; sourceTree = "<group>"; };
+		6C605FA94A4D12CDC30A14BE /* UsageControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageControl.swift; sourceTree = "<group>"; };
+		733A4334E4E15F82B6AECEA4 /* DockIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockIcon.swift; sourceTree = "<group>"; };
+		763D69D3D04EF783EF9D69B7 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		866234D177CEFD3BA4366C7C /* SelectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectService.swift; sourceTree = "<group>"; };
+		8ED766A41FA6927778322472 /* Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatting.swift; sourceTree = "<group>"; };
+		97492BC56608193EEF838FFF /* UsageTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageTimeline.swift; sourceTree = "<group>"; };
+		A482459B5F8A223767B6F455 /* PanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelView.swift; sourceTree = "<group>"; };
+		ABFC2D09EF24209B2EDBC12A /* UsageBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageBar.swift; sourceTree = "<group>"; };
+		B66B92D6E8ABF5A32E3556C1 /* MenuBarIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarIcon.swift; sourceTree = "<group>"; };
+		CC3C7ED8EDB2B193F2ED702D /* FORLWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FORLWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		D57E8852629FDFDD168C3BC6 /* SharedStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedStore.swift; sourceTree = "<group>"; };
+		DB6B4245747C8E1F01F21C78 /* LoopbackServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoopbackServer.swift; sourceTree = "<group>"; };
+		DC9C867F04BFBEC29AEC1FA0 /* ProviderMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderMark.swift; sourceTree = "<group>"; };
+		E00752AECDA2BEE2AD5FBAA9 /* OpenFORLIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenFORLIntent.swift; sourceTree = "<group>"; };
+		F2D4C4C54069C866BA4A5370 /* ProviderState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderState.swift; sourceTree = "<group>"; };
+		F4A1020C89B8FF4440DE1AE7 /* HTTP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTP.swift; sourceTree = "<group>"; };
+		FA3A3E327561B6FDB52C8E79 /* FORLWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FORLWidgetBundle.swift; sourceTree = "<group>"; };
+		FBB6AF4C697E4ACA03095399 /* OAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuth.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		2CD1C00A6C28B6A35805165B = {
+			isa = PBXGroup;
+			children = (
+				58E18C8F4BE31F2811861583 /* FORL */,
+				92B7C5A533747B4319754DDE /* FORLWidgets */,
+				59254B461C58B89F80F76627 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		2D0CE3E8FCCC02E3ACF74A63 /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				4EE5E72986E04765BCEB5FC8 /* JWT.swift */,
+				DB6B4245747C8E1F01F21C78 /* LoopbackServer.swift */,
+				FBB6AF4C697E4ACA03095399 /* OAuth.swift */,
+				5A4B4172BCB77A371B44FF58 /* PKCE.swift */,
+				4D26E3B3B7218B6CE1844170 /* TokenStore.swift */,
+			);
+			path = Auth;
+			sourceTree = "<group>";
+		};
+		4E16B457DF265F6412A3281B /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				59F8C12550AEEAEC332651F6 /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		58E18C8F4BE31F2811861583 /* FORL */ = {
+			isa = PBXGroup;
+			children = (
+				6BC20DE380F546589F258103 /* App */,
+				2D0CE3E8FCCC02E3ACF74A63 /* Auth */,
+				F8945A0C0252BCFD3BD8ED99 /* Core */,
+				E1E0F61726D0946DC39086CA /* Design */,
+				CD7DAEDAA7A33494D57AC578 /* Providers */,
+				4E16B457DF265F6412A3281B /* Resources */,
+				DDE298A3143B0BD6371A3325 /* Settings */,
+				6FB15EE432D7B3EE26CB51DA /* Surfaces */,
+			);
+			path = FORL;
+			sourceTree = "<group>";
+		};
+		59254B461C58B89F80F76627 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				1F2D9BADC1CD69E6B80BB7FC /* FORL.app */,
+				CC3C7ED8EDB2B193F2ED702D /* FORLWidgets.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		6BC20DE380F546589F258103 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				0BDB9309FC8EE8ADCC2D5E15 /* FORLApp.swift */,
+				22BB7008B91D7B59F744E3FB /* PanelWindow.swift */,
+				F2D4C4C54069C866BA4A5370 /* ProviderState.swift */,
+				31C56D148EDEBE2F45D5D46F /* UsageStore.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		6FB15EE432D7B3EE26CB51DA /* Surfaces */ = {
+			isa = PBXGroup;
+			children = (
+				733A4334E4E15F82B6AECEA4 /* DockIcon.swift */,
+				471654A02F67A9B0C79F2706 /* MenuBarController.swift */,
+				B66B92D6E8ABF5A32E3556C1 /* MenuBarIcon.swift */,
+				A482459B5F8A223767B6F455 /* PanelView.swift */,
+				205B60DF5107C4A110B5FBFB /* SettingsView.swift */,
+			);
+			path = Surfaces;
+			sourceTree = "<group>";
+		};
+		92B7C5A533747B4319754DDE /* FORLWidgets */ = {
+			isa = PBXGroup;
+			children = (
+				FA3A3E327561B6FDB52C8E79 /* FORLWidgetBundle.swift */,
+				E00752AECDA2BEE2AD5FBAA9 /* OpenFORLIntent.swift */,
+				866234D177CEFD3BA4366C7C /* SelectService.swift */,
+				6C605FA94A4D12CDC30A14BE /* UsageControl.swift */,
+				97492BC56608193EEF838FFF /* UsageTimeline.swift */,
+				4C2817C2C3B3BAE54912E34F /* UsageWidgets.swift */,
+			);
+			path = FORLWidgets;
+			sourceTree = "<group>";
+		};
+		CD7DAEDAA7A33494D57AC578 /* Providers */ = {
+			isa = PBXGroup;
+			children = (
+				4530BC83F005D5DE6AB4BB2A /* ClaudeProvider.swift */,
+				393F289E182DEF824C243E23 /* CodexProvider.swift */,
+				1B6C2BE441A13FC1FB50EF57 /* Provider.swift */,
+			);
+			path = Providers;
+			sourceTree = "<group>";
+		};
+		DDE298A3143B0BD6371A3325 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				1612B88DE0A4F3E5215AAC53 /* Preferences.swift */,
+				D57E8852629FDFDD168C3BC6 /* SharedStore.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		E1E0F61726D0946DC39086CA /* Design */ = {
+			isa = PBXGroup;
+			children = (
+				488E8D2EE9EAFA81768AE54A /* Dial.swift */,
+				DC9C867F04BFBEC29AEC1FA0 /* ProviderMark.swift */,
+				763D69D3D04EF783EF9D69B7 /* Theme.swift */,
+				ABFC2D09EF24209B2EDBC12A /* UsageBar.swift */,
+			);
+			path = Design;
+			sourceTree = "<group>";
+		};
+		F8945A0C0252BCFD3BD8ED99 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				8ED766A41FA6927778322472 /* Formatting.swift */,
+				F4A1020C89B8FF4440DE1AE7 /* HTTP.swift */,
+				444041CE48FAD3185005E089 /* ProviderIdentity.swift */,
+				689D12B316BB9B8C6F04B242 /* UsageError.swift */,
+				26862682CA1D8286BF29B60B /* UsageSnapshot.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		92262764569E157F7382FBC1 /* FORL */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 907003EF4964FE20057967C2 /* Build configuration list for PBXNativeTarget "FORL" */;
+			buildPhases = (
+				1C12DE2568B88F754A042366 /* Sources */,
+				93522CDCAAF831D314AE6CE7 /* Resources */,
+				B0A1504482E63CD4492BABC2 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				53068940FA838ED7534F2FE8 /* PBXTargetDependency */,
+			);
+			name = FORL;
+			packageProductDependencies = (
+			);
+			productName = FORL;
+			productReference = 1F2D9BADC1CD69E6B80BB7FC /* FORL.app */;
+			productType = "com.apple.product-type.application";
+		};
+		99DC4ECD7EE50961220B6139 /* FORLWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C1A173955252D808C2E1140F /* Build configuration list for PBXNativeTarget "FORLWidgets" */;
+			buildPhases = (
+				C45C21CFDAD9FC7D39E55581 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = FORLWidgets;
+			packageProductDependencies = (
+			);
+			productName = FORLWidgets;
+			productReference = CC3C7ED8EDB2B193F2ED702D /* FORLWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		CEA3FEDF7556A24B4D7F62AE /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					92262764569E157F7382FBC1 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Manual;
+					};
+					99DC4ECD7EE50961220B6139 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = 67849D30773C31AAF529DDEF /* Build configuration list for PBXProject "FORL" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 2CD1C00A6C28B6A35805165B;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 59254B461C58B89F80F76627 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				92262764569E157F7382FBC1 /* FORL */,
+				99DC4ECD7EE50961220B6139 /* FORLWidgets */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		93522CDCAAF831D314AE6CE7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2B0217E5D7175CBD08DF5170 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1C12DE2568B88F754A042366 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				30AA32264749DF2CB834E1EF /* ClaudeProvider.swift in Sources */,
+				E19356FDD168F8FFBBE8E967 /* CodexProvider.swift in Sources */,
+				14CA981AFBEC0916615AEA38 /* Dial.swift in Sources */,
+				AFDCE4E289255A28D2B83A3C /* DockIcon.swift in Sources */,
+				1DFD33B9C9A19F435067726A /* FORLApp.swift in Sources */,
+				C32EF3909EEA1D6AB26A2BEA /* Formatting.swift in Sources */,
+				7332F7D1546FDDF1456533F1 /* HTTP.swift in Sources */,
+				07E45F6E84819DB9D1ACB666 /* JWT.swift in Sources */,
+				5A2FA69BFE400883387E25C1 /* LoopbackServer.swift in Sources */,
+				88E9C107DF3129DCF6838D05 /* MenuBarController.swift in Sources */,
+				7C9E1B3634E5E551D4071637 /* MenuBarIcon.swift in Sources */,
+				729E4A5F996DCBA27138F201 /* OAuth.swift in Sources */,
+				DBA5AE287C8212EAAD72CBD6 /* PKCE.swift in Sources */,
+				5C81A4C4D78B5885DC5E59CA /* PanelView.swift in Sources */,
+				ABB30ECD1216AF6DDFB9C0FD /* PanelWindow.swift in Sources */,
+				FE7BE16670176980ECA253AB /* Preferences.swift in Sources */,
+				4E09DB9069DE568AA78E6F6E /* Provider.swift in Sources */,
+				1664A0CBAE29AF14677FDE21 /* ProviderIdentity.swift in Sources */,
+				9B458F5DAFC804ADA3650C82 /* ProviderMark.swift in Sources */,
+				BF5614244B890AA756EAE41A /* ProviderState.swift in Sources */,
+				7FC305435C7876BEF1FC9D82 /* SettingsView.swift in Sources */,
+				0000BD05A8EA051C6C461AB7 /* SharedStore.swift in Sources */,
+				1C578D38EB00053C5E13224D /* Theme.swift in Sources */,
+				D803C2E76B4DAAA80E6E22E8 /* TokenStore.swift in Sources */,
+				B5C96FE742D9F86D1F5DAB90 /* UsageBar.swift in Sources */,
+				DC55109808041C183CB62F5C /* UsageError.swift in Sources */,
+				E1E0300FB47D51E5A271008F /* UsageSnapshot.swift in Sources */,
+				F1782C155B5025E49FF9EE91 /* UsageStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C45C21CFDAD9FC7D39E55581 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4E0F8DC12E79F464C79D07D2 /* Dial.swift in Sources */,
+				251AC293514445F77AAD2501 /* FORLWidgetBundle.swift in Sources */,
+				6C3D77ED9A5F63B488270BE6 /* Formatting.swift in Sources */,
+				103FD76C09C12B39342E6D9B /* HTTP.swift in Sources */,
+				F614C60C8B9DB3C72C3F9733 /* OpenFORLIntent.swift in Sources */,
+				A950CE49B7CC524C572B8089 /* Preferences.swift in Sources */,
+				B3E9355E96ADB6BB117AE8D6 /* ProviderIdentity.swift in Sources */,
+				0FA0C3649EB2CDB75B311233 /* ProviderMark.swift in Sources */,
+				6FE1D29FE1944BB29D65F7F5 /* SelectService.swift in Sources */,
+				68E3059AF7A8C32100B85C70 /* SharedStore.swift in Sources */,
+				6A22F266718723DBB74C7E4C /* Theme.swift in Sources */,
+				F434669AA7D9F04869F0B593 /* UsageBar.swift in Sources */,
+				7E3542684C1E33E7A9F37894 /* UsageControl.swift in Sources */,
+				7BE76FE9EA448447983B4579 /* UsageError.swift in Sources */,
+				FE7A615BD7FF52C61A3F7F72 /* UsageSnapshot.swift in Sources */,
+				081BC98B1E21D05EF8B19601 /* UsageTimeline.swift in Sources */,
+				98ABDA7F096CBDE32D63D85C /* UsageWidgets.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		53068940FA838ED7534F2FE8 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 99DC4ECD7EE50961220B6139 /* FORLWidgets */;
+			targetProxy = EA019887E6EC55C24422ED87 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		6B059FE2E4B973EA854DB309 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = FORL/Resources/FORL.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = FORL/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = io.forl.app;
+				PRODUCT_NAME = FORL;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		6E5F948DC07AD1A93CC0C703 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGNING_ALLOWED = YES;
+				CODE_SIGNING_REQUIRED = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = NO;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A0D1AD0D9016537C6F66853B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGNING_ALLOWED = YES;
+				CODE_SIGNING_REQUIRED = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = NO;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		A2EC5A09DA567923399853E9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = FORLWidgets/FORLWidgets.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = FORLWidgets/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = io.forl.app.widgets;
+				PRODUCT_NAME = FORLWidgets;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		C519BB32DF2A7BF0445DE0EA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = FORL/Resources/FORL.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = FORL/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = io.forl.app;
+				PRODUCT_NAME = FORL;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		FC58284B69890FF5D3E30DAD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = FORLWidgets/FORLWidgets.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = FORLWidgets/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = io.forl.app.widgets;
+				PRODUCT_NAME = FORLWidgets;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		67849D30773C31AAF529DDEF /* Build configuration list for PBXProject "FORL" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6E5F948DC07AD1A93CC0C703 /* Debug */,
+				A0D1AD0D9016537C6F66853B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		907003EF4964FE20057967C2 /* Build configuration list for PBXNativeTarget "FORL" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6B059FE2E4B973EA854DB309 /* Debug */,
+				C519BB32DF2A7BF0445DE0EA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C1A173955252D808C2E1140F /* Build configuration list for PBXNativeTarget "FORLWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A2EC5A09DA567923399853E9 /* Debug */,
+				FC58284B69890FF5D3E30DAD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = CEA3FEDF7556A24B4D7F62AE /* Project object */;
+}
