@@ -17,14 +17,15 @@ from __future__ import annotations
 import ctypes
 import threading
 from ctypes import wintypes
-from typing import Callable
+from typing import Any, Callable
+from uuid import NAMESPACE_URL, uuid5
 
 import pystray
 from pystray._util import win32
 
 from ..providers import Provider
 from ..render.icon import render_icon
-from ..validation import require_number_in_range, require_positive_int, require_type
+from ..validation import require_non_empty_str, require_number_in_range, require_positive_int, require_type
 from ..system import small_icon_size
 from .core import MetricReading
 
@@ -34,22 +35,41 @@ ACTIVATE_ITEM = "Open"
 
 
 class _Icon(pystray.Icon):
-	"""A tray icon that reports its right click instead of opening a menu."""
+	"""A persistent tray icon that reports right clicks to the widget."""
 
-	def __init__(self, *args, on_menu: Callable[[int, int], None], **kwargs) -> None:
+	def __init__(self, name: str, *args: Any, on_menu: Callable[[int, int], None], **kwargs: Any) -> None:
 		"""Create the icon and remember who to tell about a right click.
 
 		Args:
-			*args: Passed through to pystray.
+			name: Stable provider and metric identifier. str, non-empty.
+			*args: Positional arguments passed through to pystray. Any.
 			on_menu: Called with the pointer position when the icon is right
 				clicked. Callable taking two ints and returning None.
-			**kwargs: Passed through to pystray.
+			**kwargs: Keyword arguments passed through to pystray. Any.
 
 		Returns:
 			None.
 		"""
-		super().__init__(*args, **kwargs)
+		require_non_empty_str(name, "name")
+		if not callable(on_menu):
+			raise TypeError("on_menu must be callable")
+		super().__init__(name, *args, **kwargs)
 		self._on_menu = on_menu
+		# Keep this identity stable so Explorer retains each metric's placement.
+		self._guid = win32.NOTIFYICONDATAW.GUID.from_buffer_copy(uuid5(NAMESPACE_URL, f"io.forl/tray/{name}").bytes_le)
+
+	def _message(self, code: int, flags: int, **kwargs: Any) -> None:
+		"""Identify the same persistent icon in every Shell notification call.
+
+		Args:
+			code: Shell notification operation, one of the NIM constants. int.
+			flags: Bitmask describing the supplied notification fields. int.
+			**kwargs: Notification fields passed through to pystray. Any.
+
+		Returns:
+			None.
+		"""
+		super()._message(code, flags | win32.NIF_GUID, guidItem=self._guid, **kwargs)
 
 	def _on_notify(self, wparam: int, lparam: int) -> None:
 		"""Handle a mouse message on the icon.

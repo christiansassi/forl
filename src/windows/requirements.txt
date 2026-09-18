@@ -1,0 +1,4 @@
+# Python dependencies for running and building the Windows widget.
+pillow>=11.0.0
+pystray>=0.19.5
+pyinstaller>=6.16.0

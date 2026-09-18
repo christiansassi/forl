@@ -213,7 +213,7 @@ def apply_panel_chrome(window_handle: int) -> None:
 RUN_KEY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
 VALUE_NAME_PREFIX = "FORL-"
 
-ENTRY_SCRIPT = Path(__file__).resolve().parents[3] / "run.pyw"
+ENTRY_SCRIPT = Path(__file__).resolve().parents[1] / "main.py"
 
 # The interpreter that runs a script without opening a console window. Starting
 # the widget with the plain interpreter would flash, or leave, a console at
@@ -260,6 +260,8 @@ def command_line(provider_key: str) -> str:
 		str: The command line, with every path quoted as Windows expects.
 	"""
 	require_non_empty_str(provider_key, "provider_key")
+	if getattr(sys, "frozen", False):
+		return subprocess.list2cmdline([sys.executable, f"--{provider_key}"])
 	return subprocess.list2cmdline([str(_interpreter()), str(ENTRY_SCRIPT), f"--{provider_key}"])
 
 

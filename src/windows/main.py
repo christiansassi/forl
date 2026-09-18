@@ -3,8 +3,8 @@
 One run reports on one service, named by a required flag, so the two can be
 started side by side:
 
-	pythonw run.pyw --claude
-	pythonw run.pyw --chatgpt
+	FORL.exe --claude
+	FORL.exe --chatgpt
 
 A second copy of the same service refuses to start, because two would put two
 sets of identical icons in front of the user and poll the endpoint twice as
@@ -14,18 +14,12 @@ A run with no sign-in stored for the service opens the browser to get one. The
 widget signs in for itself, so neither Claude Code nor Codex need be installed.
 
 This is the Windows widget. macOS has an application of its own, written in
-Swift and built from the mac directory, which watches both services at once and
+Swift and built from the src/mac directory, which watches both services at once and
 puts their readings in the menu bar, on the Dock icon, in real widgets and in
 Control Center. Running this on macOS is refused rather than half served.
 
-The widget puts itself into the background before it draws anything, so starting
-it from a terminal gives the prompt straight back and keeps it. Whatever it has
-to say about the launch, that a copy is already running or that the platform is
-not one it serves, is said before that and reaches the terminal as usual;
-everything it says afterwards goes to a log file beside its settings.
-
-Launch it with pythonw so no console window appears. The start on startup switch
-in the settings makes it appear at sign-in.
+Build the windowed executable with build.py so no console window appears.
+The start on startup switch in the settings makes it appear at sign-in.
 """
 
 from __future__ import annotations
@@ -34,7 +28,8 @@ import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+if not getattr(sys, "frozen", False):
+	sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.windows.providers import CHATGPT_KEY, CLAUDE_KEY, Provider, get_provider
 from src.windows.system import WINDOWS, claim_single_instance, current, detach
@@ -59,7 +54,7 @@ def parse_provider_key(argv: list[str]) -> str:
 		str: The chosen provider key.
 	"""
 	parser = argparse.ArgumentParser(
-		prog="run.pyw",
+		prog="FORL.exe",
 		description="Show Claude or ChatGPT usage in the Windows notification area.",
 	)
 	group = parser.add_mutually_exclusive_group(required=True)
@@ -121,9 +116,6 @@ def main(argv: list[str]) -> int:
 	if platform not in PLATFORMS:
 		print(f"{sys.platform} is not a platform this widget runs on.", file=sys.stderr)
 		return UNSUPPORTED_STATUS
-	# After the claim, so a second copy still reports itself to the terminal it
-	# was started from, and before the widget, so nothing Cocoa holds is carried
-	# across the fork.
 	detach(name)
 	return start(platform, provider)
 

@@ -2,22 +2,36 @@ __pycache__/
 *.py[cod]
 
 .claude/
+.codex/
 CLAUDE.md
 AGENTS.md
 
-# What the Finder leaves behind in any directory it has been asked to show.
-.DS_Store
+.vscode/
+.idea/
+*.code-workspace
+.venv/
+venv/
+.python-version
 
-# The widget writes both of these itself, to the application data directory
-# rather than to the tree, so these only matter if a copy is ever made here.
-# credentials.json holds the tokens the widget's own sign-in obtained, which are
-# the sign-in itself and must never leave the machine.
+.DS_Store
+Thumbs.db
+Desktop.ini
+desktop.ini
+*.log
+
+.secrets/
+secrets.json
+secrets.toml
+*.key
+*.pem
+*.p12
+*.pfx
+*.mobileprovision
+*.provisionprofile
+
 settings.json
 credentials.json
 
-# The credential files the provider tools keep in the home directory. The widget
-# no longer reads them, but the names stay ignored in case one is ever copied
-# next to the code while debugging.
 .credentials.json
 auth.json
 *.credentials.json
@@ -27,14 +41,16 @@ auth.json
 .env
 .env.*
 
-# Xcode's build directory for the macOS app, and the user state it drops beside
-# the project. The project file itself is committed, so opening the app in Xcode
-# needs nothing generated first.
-src/mac/.build/
-src/mac/*.xcodeproj/xcuserdata/
-src/mac/*.xcodeproj/project.xcworkspace/xcuserdata/
+.build/
+build/
+dist/
+DerivedData/
 
-# The file the macOS application keeps its sign-ins in. It is written to the
-# group container rather than here, so this only matters if a copy is ever made
-# next to the code, which is the same reason credentials.json is ignored above.
+src/windows/tests/
+src/mac/tests/
+src/mac/*Tests/
+
+xcuserdata/
+*.xcuserstate
+
 tokens.json
