@@ -114,11 +114,50 @@ final class UsageStore {
 		})
 		SharedStore.save(state)
 		WidgetCenter.shared.reloadAllTimelines()
+		if #available(macOS 26.0, *) { ControlCenter.shared.reloadAllControls() }
 	}
 }
 
 /// The one-off read of what the PyObjC widget left behind.
 enum LegacyImport {
+	/// Copy data from the former ad-hoc App Group before loading app state.
+	///
+	/// Existing destination files take precedence. Keep the source intact so
+	/// a failed migration can be retried without losing a stored sign-in.
+	static func migrateGroupIfNeeded() {
+		let defaults = UserDefaults.shared
+		guard !defaults.bool(forKey: "importedLegacyAppGroup"),
+			let destination = SharedStore.containerURL() else { return }
+		let manager = FileManager.default
+		let source = manager.homeDirectoryForCurrentUser
+			.appendingPathComponent("Library/Group Containers/FORLWIDGET.io.forl", isDirectory: true)
+		do {
+			for name in ["tokens.json", "readings.json"] {
+				let old = source.appendingPathComponent(name)
+				let new = destination.appendingPathComponent(name)
+				if manager.fileExists(atPath: old.path), !manager.fileExists(atPath: new.path) {
+					try manager.copyItem(at: old, to: new)
+					if name == "tokens.json" {
+						try manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: new.path)
+					}
+				}
+			}
+			let preferences = source.appendingPathComponent("Library/Preferences/FORLWIDGET.io.forl.plist")
+			if manager.fileExists(atPath: preferences.path) {
+				let data = try Data(contentsOf: preferences)
+				let values = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] ?? [:]
+				for key in ["startAtLogin", "selection", "importedLegacyCredentials"] {
+					if defaults.object(forKey: key) == nil, let value = values[key] {
+						defaults.set(value, forKey: key)
+					}
+				}
+			}
+			defaults.set(true, forKey: "importedLegacyAppGroup")
+		} catch {
+			log.error("Cannot migrate the old App Group: \(error.localizedDescription, privacy: .public)")
+		}
+	}
+
 	/// The file that widget kept its sign-ins in.
 	private static var credentialsURL: URL? {
 		FileManager.default

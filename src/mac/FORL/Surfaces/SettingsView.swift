@@ -18,6 +18,7 @@ private let log = Logger(subsystem: "io.forl.app", category: "settings")
 struct SettingsView: View {
 	/// Everything the app is showing.
 	@Bindable var store: UsageStore
+	@Binding var selectedProviderKey: String
 	/// Called when the user leaves the settings.
 	var onBack: () -> Void
 
@@ -26,63 +27,42 @@ struct SettingsView: View {
 			HStack(spacing: 8) {
 				Button(action: onBack) {
 					Image(systemName: "chevron.backward")
+						.font(.system(size: 12))
+						.frame(width: 16, height: 28, alignment: .leading)
+						.contentShape(Rectangle())
 				}
 				.buttonStyle(.plain)
 				.help("Back")
+				.accessibilityLabel("Back to usage")
 				Text("Settings")
 					.font(.system(size: 13, weight: .semibold))
 				Spacer()
 			}
 			.padding(.bottom, 16)
 
-			Text("Show in")
+			Text("General")
 				.font(.system(size: 11, weight: .semibold))
 				.foregroundStyle(.secondary)
 				.padding(.bottom, 8)
 
-			Toggle("Menu bar", isOn: Binding(
-				get: { store.preferences.menuBar },
-				set: { store.preferences.menuBar = $0 }
-			))
-			.padding(.bottom, 10)
-
-			Toggle("Dock", isOn: Binding(
-				get: { store.preferences.dock },
-				set: { store.preferences.dock = $0 }
-			))
-			.padding(.bottom, 10)
-
 			HStack {
-				Text("Menu bar style")
+				Text("Start at login")
 				Spacer()
-				Picker("", selection: Binding(
-					get: { store.preferences.menuBarStyle },
-					set: { store.preferences.menuBarStyle = $0 }
-				)) {
-					ForEach(MenuBarStyle.allCases, id: \.self) { style in
-						Text(style.label).tag(style)
-					}
-				}
+				Toggle("Start at login", isOn: Binding(
+					get: { store.preferences.startAtLogin },
+					set: { setStartAtLogin($0) }
+				))
 				.labelsHidden()
-				.pickerStyle(.segmented)
 				.fixedSize()
+				.tint(store.state(for: selectedProviderKey)?.provider.accent ?? .accentColor)
 			}
 
-			Text("Widgets are added from the desktop: right click the desktop, choose Edit Widgets, and look for FORL.")
-				.font(.system(size: 11))
-				.foregroundStyle(.secondary)
-				.fixedSize(horizontal: false, vertical: true)
-				.padding(.top, 10)
-
-			Divider().opacity(Theme.hairlineOpacity * 8).padding(.vertical, 14)
-
-			Toggle("Start at login", isOn: Binding(
-				get: { store.preferences.startAtLogin },
-				set: { setStartAtLogin($0) }
-			))
-
-			ForEach(store.states) { state in
-				Divider().opacity(Theme.hairlineOpacity * 8).padding(.vertical, 14)
+			if let state = store.state(for: selectedProviderKey) {
+				Spacer().frame(height: 22)
+				Text("Account")
+					.font(.system(size: 11, weight: .semibold))
+					.foregroundStyle(.secondary)
+					.padding(.bottom, 8)
 				AccountRow(state: state, store: store)
 			}
 		}
@@ -136,6 +116,7 @@ private struct AccountRow: View {
 					}
 				}
 				.buttonStyle(.link)
+				.foregroundStyle(state.provider.accent)
 				.disabled(state.signingIn)
 			}
 
@@ -145,11 +126,11 @@ private struct AccountRow: View {
 				.padding(.top, 2)
 
 			if let snapshot = state.snapshot {
+				Spacer().frame(height: 22)
 				Text("Show")
 					.font(.system(size: 11, weight: .semibold))
 					.foregroundStyle(.secondary)
-					.padding(.top, 12)
-					.padding(.bottom, 6)
+					.padding(.bottom, 10)
 
 				ForEach(snapshot.metrics) { metric in
 					Toggle(metric.label, isOn: Binding(
@@ -160,7 +141,10 @@ private struct AccountRow: View {
 						}
 					))
 					.toggleStyle(.checkbox)
+					.tint(state.provider.accent)
 					.font(.system(size: 12))
+					.frame(minHeight: 20, alignment: .leading)
+					.padding(.vertical, 1)
 				}
 			}
 		}

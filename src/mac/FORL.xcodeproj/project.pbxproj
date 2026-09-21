@@ -8,19 +8,24 @@
 
 /* Begin PBXBuildFile section */
 		0000BD05A8EA051C6C461AB7 /* SharedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D57E8852629FDFDD168C3BC6 /* SharedStore.swift */; };
+		033867F8514CCF39AE51C513 /* DialGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AC6B0CED0218263B953FFAC /* DialGeometry.swift */; };
 		07E45F6E84819DB9D1ACB666 /* JWT.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EE5E72986E04765BCEB5FC8 /* JWT.swift */; };
 		081BC98B1E21D05EF8B19601 /* UsageTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97492BC56608193EEF838FFF /* UsageTimeline.swift */; };
 		0FA0C3649EB2CDB75B311233 /* ProviderMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC9C867F04BFBEC29AEC1FA0 /* ProviderMark.swift */; };
 		103FD76C09C12B39342E6D9B /* HTTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4A1020C89B8FF4440DE1AE7 /* HTTP.swift */; };
+		10ED1276779D8E147D51A1C4 /* Skeleton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E0771F7E3DAF8DB62248C65 /* Skeleton.swift */; };
 		14CA981AFBEC0916615AEA38 /* Dial.swift in Sources */ = {isa = PBXBuildFile; fileRef = 488E8D2EE9EAFA81768AE54A /* Dial.swift */; };
 		1664A0CBAE29AF14677FDE21 /* ProviderIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 444041CE48FAD3185005E089 /* ProviderIdentity.swift */; };
+		171EA48C8DA4178A31706B77 /* WidgetChoices.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF5B474142D4EAAA644F6BC3 /* WidgetChoices.swift */; };
 		1C578D38EB00053C5E13224D /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 763D69D3D04EF783EF9D69B7 /* Theme.swift */; };
 		1DFD33B9C9A19F435067726A /* FORLApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BDB9309FC8EE8ADCC2D5E15 /* FORLApp.swift */; };
 		251AC293514445F77AAD2501 /* FORLWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA3A3E327561B6FDB52C8E79 /* FORLWidgetBundle.swift */; };
 		2B0217E5D7175CBD08DF5170 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 59F8C12550AEEAEC332651F6 /* Assets.xcassets */; };
 		30AA32264749DF2CB834E1EF /* ClaudeProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4530BC83F005D5DE6AB4BB2A /* ClaudeProvider.swift */; };
+		35E8C560AF7CEE1BBCC9FFE1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 59F8C12550AEEAEC332651F6 /* Assets.xcassets */; };
 		4E09DB9069DE568AA78E6F6E /* Provider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B6C2BE441A13FC1FB50EF57 /* Provider.swift */; };
 		4E0F8DC12E79F464C79D07D2 /* Dial.swift in Sources */ = {isa = PBXBuildFile; fileRef = 488E8D2EE9EAFA81768AE54A /* Dial.swift */; };
+		55BD6D076B226FB3A107B85A /* Skeleton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E0771F7E3DAF8DB62248C65 /* Skeleton.swift */; };
 		5A2FA69BFE400883387E25C1 /* LoopbackServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB6B4245747C8E1F01F21C78 /* LoopbackServer.swift */; };
 		5C81A4C4D78B5885DC5E59CA /* PanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A482459B5F8A223767B6F455 /* PanelView.swift */; };
 		68E3059AF7A8C32100B85C70 /* SharedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D57E8852629FDFDD168C3BC6 /* SharedStore.swift */; };
@@ -36,14 +41,17 @@
 		88E9C107DF3129DCF6838D05 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 471654A02F67A9B0C79F2706 /* MenuBarController.swift */; };
 		98ABDA7F096CBDE32D63D85C /* UsageWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C2817C2C3B3BAE54912E34F /* UsageWidgets.swift */; };
 		9B458F5DAFC804ADA3650C82 /* ProviderMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC9C867F04BFBEC29AEC1FA0 /* ProviderMark.swift */; };
+		A24C1C56386F4BFBFF682F6E /* WidgetChoices.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF5B474142D4EAAA644F6BC3 /* WidgetChoices.swift */; };
 		A950CE49B7CC524C572B8089 /* Preferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1612B88DE0A4F3E5215AAC53 /* Preferences.swift */; };
 		ABB30ECD1216AF6DDFB9C0FD /* PanelWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22BB7008B91D7B59F744E3FB /* PanelWindow.swift */; };
-		AFDCE4E289255A28D2B83A3C /* DockIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 733A4334E4E15F82B6AECEA4 /* DockIcon.swift */; };
+		AFF5F8FA41BC6415D7A78DCE /* ControlSymbols.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0F16D6629873683464A8ADEC /* ControlSymbols.xcassets */; };
 		B3E9355E96ADB6BB117AE8D6 /* ProviderIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 444041CE48FAD3185005E089 /* ProviderIdentity.swift */; };
 		B5C96FE742D9F86D1F5DAB90 /* UsageBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABFC2D09EF24209B2EDBC12A /* UsageBar.swift */; };
+		BDCDE16E94DCB6BB92E2B1F2 /* DialGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AC6B0CED0218263B953FFAC /* DialGeometry.swift */; };
 		BF5614244B890AA756EAE41A /* ProviderState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2D4C4C54069C866BA4A5370 /* ProviderState.swift */; };
 		C2BD3F124E693E41D99B3B60 /* FORLWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CC3C7ED8EDB2B193F2ED702D /* FORLWidgets.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		C32EF3909EEA1D6AB26A2BEA /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ED766A41FA6927778322472 /* Formatting.swift */; };
+		D484A39E603E0558F0EDBFF7 /* AppIcon.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 821B3A0A55C7D1C023372879 /* AppIcon.xcassets */; };
 		D803C2E76B4DAAA80E6E22E8 /* TokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D26E3B3B7218B6CE1844170 /* TokenStore.swift */; };
 		DBA5AE287C8212EAAD72CBD6 /* PKCE.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A4B4172BCB77A371B44FF58 /* PKCE.swift */; };
 		DC55109808041C183CB62F5C /* UsageError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 689D12B316BB9B8C6F04B242 /* UsageError.swift */; };
@@ -82,6 +90,7 @@
 
 /* Begin PBXFileReference section */
 		0BDB9309FC8EE8ADCC2D5E15 /* FORLApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FORLApp.swift; sourceTree = "<group>"; };
+		0F16D6629873683464A8ADEC /* ControlSymbols.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = ControlSymbols.xcassets; sourceTree = "<group>"; };
 		1612B88DE0A4F3E5215AAC53 /* Preferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Preferences.swift; sourceTree = "<group>"; };
 		1B6C2BE441A13FC1FB50EF57 /* Provider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Provider.swift; sourceTree = "<group>"; };
 		1F2D9BADC1CD69E6B80BB7FC /* FORL.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FORL.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -90,6 +99,7 @@
 		26862682CA1D8286BF29B60B /* UsageSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageSnapshot.swift; sourceTree = "<group>"; };
 		31C56D148EDEBE2F45D5D46F /* UsageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageStore.swift; sourceTree = "<group>"; };
 		393F289E182DEF824C243E23 /* CodexProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexProvider.swift; sourceTree = "<group>"; };
+		3E0771F7E3DAF8DB62248C65 /* Skeleton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Skeleton.swift; sourceTree = "<group>"; };
 		444041CE48FAD3185005E089 /* ProviderIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderIdentity.swift; sourceTree = "<group>"; };
 		4530BC83F005D5DE6AB4BB2A /* ClaudeProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeProvider.swift; sourceTree = "<group>"; };
 		471654A02F67A9B0C79F2706 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
@@ -99,10 +109,11 @@
 		4EE5E72986E04765BCEB5FC8 /* JWT.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JWT.swift; sourceTree = "<group>"; };
 		59F8C12550AEEAEC332651F6 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		5A4B4172BCB77A371B44FF58 /* PKCE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PKCE.swift; sourceTree = "<group>"; };
+		5AC6B0CED0218263B953FFAC /* DialGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DialGeometry.swift; sourceTree = "<group>"; };
 		689D12B316BB9B8C6F04B242 /* UsageError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageError.swift; sourceTree = "<group>"; };
 		6C605FA94A4D12CDC30A14BE /* UsageControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageControl.swift; sourceTree = "<group>"; };
-		733A4334E4E15F82B6AECEA4 /* DockIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockIcon.swift; sourceTree = "<group>"; };
 		763D69D3D04EF783EF9D69B7 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		821B3A0A55C7D1C023372879 /* AppIcon.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = AppIcon.xcassets; sourceTree = "<group>"; };
 		866234D177CEFD3BA4366C7C /* SelectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectService.swift; sourceTree = "<group>"; };
 		8ED766A41FA6927778322472 /* Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatting.swift; sourceTree = "<group>"; };
 		97492BC56608193EEF838FFF /* UsageTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageTimeline.swift; sourceTree = "<group>"; };
@@ -113,6 +124,7 @@
 		D57E8852629FDFDD168C3BC6 /* SharedStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedStore.swift; sourceTree = "<group>"; };
 		DB6B4245747C8E1F01F21C78 /* LoopbackServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoopbackServer.swift; sourceTree = "<group>"; };
 		DC9C867F04BFBEC29AEC1FA0 /* ProviderMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderMark.swift; sourceTree = "<group>"; };
+		DF5B474142D4EAAA644F6BC3 /* WidgetChoices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetChoices.swift; sourceTree = "<group>"; };
 		E00752AECDA2BEE2AD5FBAA9 /* OpenFORLIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenFORLIntent.swift; sourceTree = "<group>"; };
 		F2D4C4C54069C866BA4A5370 /* ProviderState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderState.swift; sourceTree = "<group>"; };
 		F4A1020C89B8FF4440DE1AE7 /* HTTP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTP.swift; sourceTree = "<group>"; };
@@ -145,6 +157,7 @@
 		4E16B457DF265F6412A3281B /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				821B3A0A55C7D1C023372879 /* AppIcon.xcassets */,
 				59F8C12550AEEAEC332651F6 /* Assets.xcassets */,
 			);
 			path = Resources;
@@ -188,7 +201,6 @@
 		6FB15EE432D7B3EE26CB51DA /* Surfaces */ = {
 			isa = PBXGroup;
 			children = (
-				733A4334E4E15F82B6AECEA4 /* DockIcon.swift */,
 				471654A02F67A9B0C79F2706 /* MenuBarController.swift */,
 				B66B92D6E8ABF5A32E3556C1 /* MenuBarIcon.swift */,
 				A482459B5F8A223767B6F455 /* PanelView.swift */,
@@ -200,6 +212,7 @@
 		92B7C5A533747B4319754DDE /* FORLWidgets */ = {
 			isa = PBXGroup;
 			children = (
+				E34AD09E20A793468B211866 /* Resources */,
 				FA3A3E327561B6FDB52C8E79 /* FORLWidgetBundle.swift */,
 				E00752AECDA2BEE2AD5FBAA9 /* OpenFORLIntent.swift */,
 				866234D177CEFD3BA4366C7C /* SelectService.swift */,
@@ -225,6 +238,7 @@
 			children = (
 				1612B88DE0A4F3E5215AAC53 /* Preferences.swift */,
 				D57E8852629FDFDD168C3BC6 /* SharedStore.swift */,
+				DF5B474142D4EAAA644F6BC3 /* WidgetChoices.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -233,11 +247,21 @@
 			isa = PBXGroup;
 			children = (
 				488E8D2EE9EAFA81768AE54A /* Dial.swift */,
+				5AC6B0CED0218263B953FFAC /* DialGeometry.swift */,
 				DC9C867F04BFBEC29AEC1FA0 /* ProviderMark.swift */,
+				3E0771F7E3DAF8DB62248C65 /* Skeleton.swift */,
 				763D69D3D04EF783EF9D69B7 /* Theme.swift */,
 				ABFC2D09EF24209B2EDBC12A /* UsageBar.swift */,
 			);
 			path = Design;
+			sourceTree = "<group>";
+		};
+		E34AD09E20A793468B211866 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				0F16D6629873683464A8ADEC /* ControlSymbols.xcassets */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 		F8945A0C0252BCFD3BD8ED99 /* Core */ = {
@@ -259,6 +283,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 907003EF4964FE20057967C2 /* Build configuration list for PBXNativeTarget "FORL" */;
 			buildPhases = (
+				41B1670795662BA0E68B86F8 /* Cut the shared app icon */,
 				1C12DE2568B88F754A042366 /* Sources */,
 				93522CDCAAF831D314AE6CE7 /* Resources */,
 				B0A1504482E63CD4492BABC2 /* Embed Foundation Extensions */,
@@ -279,7 +304,9 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = C1A173955252D808C2E1140F /* Build configuration list for PBXNativeTarget "FORLWidgets" */;
 			buildPhases = (
+				B195661FB2E816B69DCAF40E /* Generate Control Center gauges */,
 				C45C21CFDAD9FC7D39E55581 /* Sources */,
+				57F0FB663B1B7469ED65D8ED /* Resources */,
 			);
 			buildRules = (
 			);
@@ -302,11 +329,11 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					92262764569E157F7382FBC1 = {
-						DevelopmentTeam = "";
+						DevelopmentTeam = 66YH3B9VCL;
 						ProvisioningStyle = Manual;
 					};
 					99DC4ECD7EE50961220B6139 = {
-						DevelopmentTeam = "";
+						DevelopmentTeam = 66YH3B9VCL;
 						ProvisioningStyle = Manual;
 					};
 				};
@@ -332,15 +359,72 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		57F0FB663B1B7469ED65D8ED /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				35E8C560AF7CEE1BBCC9FFE1 /* Assets.xcassets in Resources */,
+				AFF5F8FA41BC6415D7A78DCE /* ControlSymbols.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		93522CDCAAF831D314AE6CE7 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D484A39E603E0558F0EDBFF7 /* AppIcon.xcassets in Resources */,
 				2B0217E5D7175CBD08DF5170 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		41B1670795662BA0E68B86F8 /* Cut the shared app icon */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/Tools/GenerateAppIcon.sh",
+				"$(SRCROOT)/../common/assets/icon.png",
+			);
+			name = "Cut the shared app icon";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/FORL/Resources/AppIcon.xcassets/AppIcon.appiconset/Contents.json",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\nbash \"$SRCROOT/Tools/GenerateAppIcon.sh\" \"$SRCROOT/../common/assets/icon.png\" \"$SRCROOT/FORL/Resources/AppIcon.xcassets/AppIcon.appiconset\"\n";
+		};
+		B195661FB2E816B69DCAF40E /* Generate Control Center gauges */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/Tools/GenerateControlSymbols.swift",
+				"$(SRCROOT)/FORL/Design/DialGeometry.swift",
+				"$(SRCROOT)/../common/assets/claude.svg",
+				"$(SRCROOT)/../common/assets/chatgpt.svg",
+			);
+			name = "Generate Control Center gauges";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/FORLWidgets/Resources/ControlSymbols.xcassets/Contents.json",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\nxcrun swiftc -parse-as-library \"$SRCROOT/Tools/GenerateControlSymbols.swift\" \"$SRCROOT/FORL/Design/DialGeometry.swift\" -o \"$DERIVED_FILE_DIR/GenerateControlSymbols\"\n\"$DERIVED_FILE_DIR/GenerateControlSymbols\" \"$SRCROOT\" \"$SRCROOT/FORLWidgets/Resources/ControlSymbols.xcassets\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		1C12DE2568B88F754A042366 /* Sources */ = {
@@ -350,7 +434,7 @@
 				30AA32264749DF2CB834E1EF /* ClaudeProvider.swift in Sources */,
 				E19356FDD168F8FFBBE8E967 /* CodexProvider.swift in Sources */,
 				14CA981AFBEC0916615AEA38 /* Dial.swift in Sources */,
-				AFDCE4E289255A28D2B83A3C /* DockIcon.swift in Sources */,
+				033867F8514CCF39AE51C513 /* DialGeometry.swift in Sources */,
 				1DFD33B9C9A19F435067726A /* FORLApp.swift in Sources */,
 				C32EF3909EEA1D6AB26A2BEA /* Formatting.swift in Sources */,
 				7332F7D1546FDDF1456533F1 /* HTTP.swift in Sources */,
@@ -369,12 +453,14 @@
 				BF5614244B890AA756EAE41A /* ProviderState.swift in Sources */,
 				7FC305435C7876BEF1FC9D82 /* SettingsView.swift in Sources */,
 				0000BD05A8EA051C6C461AB7 /* SharedStore.swift in Sources */,
+				55BD6D076B226FB3A107B85A /* Skeleton.swift in Sources */,
 				1C578D38EB00053C5E13224D /* Theme.swift in Sources */,
 				D803C2E76B4DAAA80E6E22E8 /* TokenStore.swift in Sources */,
 				B5C96FE742D9F86D1F5DAB90 /* UsageBar.swift in Sources */,
 				DC55109808041C183CB62F5C /* UsageError.swift in Sources */,
 				E1E0300FB47D51E5A271008F /* UsageSnapshot.swift in Sources */,
 				F1782C155B5025E49FF9EE91 /* UsageStore.swift in Sources */,
+				A24C1C56386F4BFBFF682F6E /* WidgetChoices.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -383,6 +469,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4E0F8DC12E79F464C79D07D2 /* Dial.swift in Sources */,
+				BDCDE16E94DCB6BB92E2B1F2 /* DialGeometry.swift in Sources */,
 				251AC293514445F77AAD2501 /* FORLWidgetBundle.swift in Sources */,
 				6C3D77ED9A5F63B488270BE6 /* Formatting.swift in Sources */,
 				103FD76C09C12B39342E6D9B /* HTTP.swift in Sources */,
@@ -392,6 +479,7 @@
 				0FA0C3649EB2CDB75B311233 /* ProviderMark.swift in Sources */,
 				6FE1D29FE1944BB29D65F7F5 /* SelectService.swift in Sources */,
 				68E3059AF7A8C32100B85C70 /* SharedStore.swift in Sources */,
+				10ED1276779D8E147D51A1C4 /* Skeleton.swift in Sources */,
 				6A22F266718723DBB74C7E4C /* Theme.swift in Sources */,
 				F434669AA7D9F04869F0B593 /* UsageBar.swift in Sources */,
 				7E3542684C1E33E7A9F37894 /* UsageControl.swift in Sources */,
@@ -399,6 +487,7 @@
 				FE7A615BD7FF52C61A3F7F72 /* UsageSnapshot.swift in Sources */,
 				081BC98B1E21D05EF8B19601 /* UsageTimeline.swift in Sources */,
 				98ABDA7F096CBDE32D63D85C /* UsageWidgets.swift in Sources */,
+				171EA48C8DA4178A31706B77 /* WidgetChoices.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -465,15 +554,16 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGNING_ALLOWED = YES;
 				CODE_SIGNING_REQUIRED = YES;
-				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 6;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 66YH3B9VCL;
 				ENABLE_HARDENED_RUNTIME = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				FORL_APP_GROUP = "$(DEVELOPMENT_TEAM).io.forl";
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -537,15 +627,16 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGNING_ALLOWED = YES;
 				CODE_SIGNING_REQUIRED = YES;
-				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 6;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 66YH3B9VCL;
 				ENABLE_HARDENED_RUNTIME = NO;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				FORL_APP_GROUP = "$(DEVELOPMENT_TEAM).io.forl";
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;

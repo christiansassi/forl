@@ -6,11 +6,10 @@
 //  app that embeds it, so the two share an App Group container. The app writes
 //  the latest reading into it after every poll and asks WidgetKit to reload;
 //  the widget reads it and makes no request of its own, which is what keeps
-//  every token inside the app.
+//  token handling in the app.
 //
-//  Only readings and preferences go in here. The sign-ins live in the keychain,
-//  because a file in a group container is readable by anything that can reach
-//  the container and a refresh token is the sign-in itself.
+//  This store handles readings; TokenStore separately manages the sign-in file
+//  in the same container. Widgets only read the readings and preferences.
 //
 
 import Foundation
@@ -19,16 +18,15 @@ import os
 /// The App Group both bundles declare, which is also the name of the directory
 /// the container is kept in.
 ///
-/// The prefix is a placeholder rather than a real Apple team identifier. macOS
-/// itself does not care what an App Group is called: an ad-hoc signed app is
-/// given whatever container it asks for, which is what lets this app share one
-/// without an Apple developer account at all. Xcode does care, and refuses to
-/// build a macOS target whose group is not prefixed the way a team identifier
-/// would be, so it is given something of that shape and nothing of anyone's.
-///
-/// Signing with a real team later means putting that team's identifier here, and
-/// signing in once more, because the container is named after it.
-let appGroupIdentifier = "FORLWIDGET.io.forl"
+/// Read the build setting used by both targets' entitlements. The prefix must
+/// match the signing team for macOS to grant access to the widget process.
+let appGroupIdentifier: String = {
+	guard let identifier = Bundle.main.object(forInfoDictionaryKey: "FORLAppGroupIdentifier") as? String,
+		!identifier.isEmpty, !identifier.contains("$(") else {
+		fatalError("FORLAppGroupIdentifier must contain the expanded FORL_APP_GROUP build setting")
+	}
+	return identifier
+}()
 
 /// The file inside the container that holds the last reading of every provider.
 private let readingsFile = "readings.json"
@@ -84,14 +82,16 @@ enum SharedStore {
 	/// - Returns: The shared state, empty when nothing has been written yet or
 	///   what was written cannot be read.
 	static func load() -> SharedState {
-		guard
-			let url = containerURL()?.appendingPathComponent(readingsFile),
-			let data = try? Data(contentsOf: url),
-			let state = try? JSONDecoder.shared.decode(SharedState.self, from: data)
-		else {
+		guard let url = containerURL()?.appendingPathComponent(readingsFile) else {
 			return SharedState()
 		}
-		return state
+		do {
+			let data = try Data(contentsOf: url)
+			return try JSONDecoder.shared.decode(SharedState.self, from: data)
+		} catch {
+			log.error("Cannot read the shared reading: \(error.localizedDescription, privacy: .public)")
+			return SharedState()
+		}
 	}
 
 	/// Write the state the widget should show.
@@ -100,6 +100,7 @@ enum SharedStore {
 	/// - Returns: Nothing. A container that cannot be written costs the widget
 	///   its next update and nothing else, so it is logged rather than raised.
 	static func save(_ state: SharedState) {
+		WidgetChoices.update(from: state)
 		guard let url = containerURL()?.appendingPathComponent(readingsFile) else {
 			return
 		}

@@ -83,7 +83,7 @@ final class ProviderState: Identifiable {
 	/// - Returns: Text such as "34% - Current session".
 	func tooltip(for metric: Metric) -> String {
 		signInMessage.isEmpty
-			? Formatting.tooltip(value: metric.percent, label: metric.label)
+			? Formatting.tooltip(value: metric.percent, label: metric.label, resetsAt: metric.resetsAt)
 			: signInMessage
 	}
 

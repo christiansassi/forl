@@ -25,12 +25,15 @@ private let usageRamp: [(stop: Double, color: (Double, Double, Double))] = [
 
 /// The measurements and colors every surface shares.
 enum Theme {
+	/// The surface a widget is drawn on.
+	///
+	/// The window background the system itself uses, which is one solid color
+	/// and follows the appearance the user is in, so a widget is dark on a dark
+	/// desktop and light on a light one without being told which it is.
+	static let widgetBackground = Color(nsColor: .windowBackgroundColor)
 	/// Opacity of a gauge track, which is the gauge color laid over whatever is
 	/// behind it.
 	static let trackOpacity: Double = 0.22
-
-	/// Opacity of a rule between two groups.
-	static let hairlineOpacity: Double = 0.09
 
 	/// Thickness of a dial's ring as a share of its own diameter, which is what
 	/// Apple draws a battery dial at: thin enough to read as a gauge rather than

@@ -1,87 +1,58 @@
-//
-//  Dial.swift
-//  A ring with the reading set inside it.
-//
-//  The reading starts at the top and runs clockwise, which is the direction a
-//  dial is read in, and both ends are rounded so a small reading is a mark
-//  rather than a sliver. The percent sign sits on the ring rather than under the
-//  number, in a gap cut out of the ring for it, so the number keeps the whole
-//  middle of the dial and the sign still says what the number is a share of.
-//
-//  Drawn by the Dock icon, by the small widget and by the Control Center
-//  control, at three sizes and one shape.
-//
+// A usage number inside an open arc, with the provider mark in the bottom gap.
 
 import SwiftUI
 
-/// A dial showing one reading.
+/// An open arc whose endpoints stay clear of the provider mark.
+struct UsageArc: Shape {
+	var fraction: Double = 1
+	var animatableData: Double {
+		get { fraction }
+		set { fraction = newValue }
+	}
+
+	/// Draw the selected fraction of the 270-degree arc.
+	/// - Parameter rect: The square containing the dial.
+	/// - Returns: A path from the lower left around the top to the lower right.
+	func path(in rect: CGRect) -> Path {
+		let fraction = min(1, max(0, fraction))
+		guard fraction > 0 else { return Path() }
+		var path = Path()
+		path.addArc(center: CGPoint(x: rect.midX, y: rect.midY), radius: min(rect.width, rect.height) * DialGeometry.radius, startAngle: .degrees(DialGeometry.startDegrees), endAngle: .degrees(DialGeometry.startDegrees + DialGeometry.sweepDegrees * fraction), clockwise: false)
+		return path
+	}
+}
+
+/// Show a number without a percent sign and a provider mark in the open gap.
 struct Dial: View {
-	/// Share of the window already used, 0 to 100, or nil before a reading has
-	/// arrived, which draws an empty ring and a dash.
 	var percent: Double?
-	/// The color the ring is struck in.
 	var accent: Color
-	/// Whether to set the percent sign across the foot of the ring. False for a
-	/// dial small enough that the sign would cost more than it says.
-	var unit: Bool = true
+	var symbolName: String
+	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 
 	var body: some View {
 		GeometryReader { geometry in
 			let edge = min(geometry.size.width, geometry.size.height)
-			let stroke = edge * Theme.ringRadius * 2 * Theme.ringThickness
-			let fraction = (percent ?? 0) / 100
-
+			let fraction = clampPercent(percent) / 100
 			ZStack {
-				Circle()
-					.inset(by: edge * (0.5 - Theme.ringRadius))
-					.stroke(Theme.trackColor(percent), style: StrokeStyle(lineWidth: stroke))
-					.mask(gapMask(edge: edge))
-
-				Circle()
-					.inset(by: edge * (0.5 - Theme.ringRadius))
-					.trim(from: 0, to: fraction)
-					.stroke(accent, style: StrokeStyle(lineWidth: stroke, lineCap: .round))
-					.rotationEffect(.degrees(-90))
-					.mask(gapMask(edge: edge))
-					.animation(Theme.gaugeMotion, value: fraction)
-
-				Text(percent.map { "\(Int($0.rounded()))" } ?? "-")
-					.font(.system(size: edge * 0.30, weight: .semibold, design: .rounded))
+				UsageArc()
+					.stroke(accent.opacity(Theme.trackOpacity), style: StrokeStyle(lineWidth: edge * DialGeometry.stroke, lineCap: .round))
+				UsageArc(fraction: fraction)
+					.stroke(accent, style: StrokeStyle(lineWidth: edge * DialGeometry.stroke, lineCap: .round))
+					.animation(reduceMotion ? nil : Theme.gaugeMotion, value: fraction)
+				Text(percent.map { "\(Int(clampPercent($0).rounded()))" } ?? "-")
+					.font(.system(size: edge * 0.32, weight: .semibold, design: .rounded))
 					.monospacedDigit()
-					.minimumScaleFactor(0.5)
 					.lineLimit(1)
-
-				if unit {
-					Text("%")
-						.font(.system(size: edge * 0.115, weight: .semibold, design: .rounded))
-						.offset(y: edge * Theme.ringRadius)
-				}
+					.minimumScaleFactor(0.6)
+					.frame(width: edge * 0.60)
+				ProviderMark(symbolName: symbolName, tint: accent, size: edge * DialGeometry.markSize)
+					.offset(y: edge * (DialGeometry.markCenterY - 0.5))
 			}
-			.frame(width: geometry.size.width, height: geometry.size.height)
+			.frame(width: edge, height: edge)
+			.frame(maxWidth: .infinity, maxHeight: .infinity)
 		}
 		.aspectRatio(1, contentMode: .fit)
-	}
-
-	/// Return the mask that keeps the ring out from behind the percent sign.
-	///
-	/// A full square with a small box punched out of the foot of it, so the sign
-	/// sits in a break in the ring rather than on top of it.
-	///
-	/// - Parameter edge: The edge length of the dial's square, in points.
-	/// - Returns: The mask to apply to the ring.
-	@ViewBuilder
-	private func gapMask(edge: CGFloat) -> some View {
-		if unit {
-			Rectangle()
-				.overlay {
-					Rectangle()
-						.frame(width: edge * 0.22, height: edge * 0.17)
-						.offset(y: edge * Theme.ringRadius)
-						.blendMode(.destinationOut)
-				}
-				.compositingGroup()
-		} else {
-			Rectangle()
-		}
+		.accessibilityElement(children: .ignore)
+		.accessibilityLabel(percent.map { Formatting.percent($0) } ?? "No reading")
 	}
 }

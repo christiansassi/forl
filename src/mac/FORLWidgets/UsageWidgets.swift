@@ -2,26 +2,21 @@
 //  UsageWidgets.swift
 //  The widgets macOS draws on the desktop and in Notification Centre.
 //
-//  Two sizes, at the shapes macOS gives a widget. The small one is the dial the
-//  Dock icon carries with the mark in the corner; the medium one is a row of the
-//  panel. Both show the first usage the user chose, because that is what a tile
-//  read across a desk has room to say, and the panel is where the rest are.
+//  Each size shows the provider and reading selected in Edit Widget.
 //
 
 import WidgetKit
 import SwiftUI
 
-/// The small widget: a mark in the corner and a dial under it.
+/// The small widget: a number inside an open arc, with the mark in its gap.
 struct SmallUsageView: View {
 	/// What to draw.
 	var entry: UsageEntry
 
 	var body: some View {
-		ZStack(alignment: .topLeading) {
-			Dial(percent: entry.metric?.percent, accent: entry.accent)
-				.frame(maxWidth: .infinity, maxHeight: .infinity)
-			ProviderMark(symbolName: entry.symbolName, tint: entry.accent, size: 22)
-		}
+		Dial(percent: entry.metric?.percent, accent: entry.accent, symbolName: entry.symbolName)
+			.frame(maxWidth: .infinity, maxHeight: .infinity)
+			.accessibilityLabel("\(entry.label), \(entry.metric?.label ?? entry.message), \(entry.metric.map { Formatting.percent($0.percent) } ?? "No reading")")
 	}
 }
 
@@ -54,11 +49,20 @@ struct MediumUsageView: View {
 				let subtitle = Formatting.subtitle(metric, now: entry.date)
 				if !subtitle.isEmpty {
 					Text(subtitle)
-						.font(.system(size: 11))
-						.foregroundStyle(.secondary)
+						.font(.system(size: 12, weight: .medium))
+						.foregroundStyle(.primary.opacity(0.8))
 						.lineLimit(2)
-						.padding(.top, 4)
+						.padding(.top, 5)
 				}
+			} else if entry.loading {
+				SkeletonBlock(width: 96)
+				HStack(spacing: 10) {
+					UsageBar(percent: nil)
+					SkeletonBlock(width: 30, height: 13)
+				}
+				.padding(.top, 6)
+				SkeletonBlock(width: 120)
+					.padding(.top, 7)
 			} else {
 				Text(entry.message)
 					.font(.system(size: 13))
@@ -75,17 +79,23 @@ struct UsageWidgetView: View {
 	var entry: UsageEntry
 	/// The size macOS asked for.
 	@Environment(\.widgetFamily) private var family
+	@Environment(\.widgetContentMargins) private var contentMargins
 
 	var body: some View {
 		Group {
 			switch family {
 			case .systemSmall:
 				SmallUsageView(entry: entry)
+					.padding(4)
 			default:
 				MediumUsageView(entry: entry)
+					.padding(contentMargins)
 			}
 		}
-		.containerBackground(.fill.tertiary, for: .widget)
+		.containerBackground(for: .widget) {
+			Theme.widgetBackground
+		}
+		.widgetURL(URL(string: "forl://provider/\(entry.providerKey ?? "")"))
 	}
 }
 
@@ -100,7 +110,9 @@ struct UsageWidget: Widget {
 			UsageWidgetView(entry: entry)
 		}
 		.configurationDisplayName("Usage")
-		.description("How much of your limit you have used. Press Edit Widget to choose the service.")
+		.description("Choose a provider and a reading in Edit Widget.")
 		.supportedFamilies([.systemSmall, .systemMedium])
+		.contentMarginsDisabled()
+		.containerBackgroundRemovable(false)
 	}
 }

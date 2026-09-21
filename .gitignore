@@ -54,3 +54,4 @@ xcuserdata/
 *.xcuserstate
 
 tokens.json
+src/mac/FORLWidgets/Resources/ControlSymbols.xcassets/

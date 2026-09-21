@@ -290,7 +290,7 @@ class WidgetCore:
 		metric = self._snapshot.metric(key) if self._snapshot is not None else None
 		if metric is None:
 			return f"{self._provider.label} usage: {LOADING_TEXT}"
-		return format_icon_tooltip(metric.percent, metric.label)
+		return format_icon_tooltip(metric.percent, metric.label, metric.resets_at)
 
 	def seconds_to_next_update(self) -> float:
 		"""Return how long is left before the next reading is taken.

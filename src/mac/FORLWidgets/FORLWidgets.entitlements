@@ -6,7 +6,7 @@
 	<true/>
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>FORLWIDGET.io.forl</string>
+		<string>$(FORL_APP_GROUP)</string>
 	</array>
 </dict>
 </plist>

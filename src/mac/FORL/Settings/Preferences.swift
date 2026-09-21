@@ -10,52 +10,25 @@
 //
 
 import Foundation
-
-/// How the readings are laid out in the menu bar.
-enum MenuBarStyle: String, Codable, Sendable, CaseIterable {
-	/// The mark, a tank and the percentage.
-	case full
-	/// The percentage alone, for a crowded menu bar.
-	case compact
-
-	/// Return the name the settings offer this style under.
-	///
-	/// - Returns: A short label.
-	var label: String {
-		switch self {
-		case .full: return "Full"
-		case .compact: return "Compact"
-		}
-	}
-}
+import Observation
 
 /// What the app remembers, for one provider and for the app as a whole.
 @MainActor
-final class Preferences: ObservableObject {
+@Observable
+final class Preferences {
 	/// The defaults the app and the widget share.
 	private let defaults: UserDefaults
 
-	/// Whether the menu bar carries the readings.
-	@Published var menuBar: Bool { didSet { defaults.set(menuBar, forKey: Key.menuBar) } }
-	/// Whether the Dock carries the first reading.
-	@Published var dock: Bool { didSet { defaults.set(dock, forKey: Key.dock) } }
 	/// Whether the app starts when the user logs in.
-	@Published var startAtLogin: Bool { didSet { defaults.set(startAtLogin, forKey: Key.startAtLogin) } }
-	/// How the menu bar items are laid out.
-	@Published var menuBarStyle: MenuBarStyle {
-		didSet { defaults.set(menuBarStyle.rawValue, forKey: Key.menuBarStyle) }
-	}
+	var startAtLogin: Bool { didSet { defaults.set(startAtLogin, forKey: Key.startAtLogin) } }
 	/// Which metrics the user chose to show, keyed by provider.
-	@Published var selection: [String: [String]] {
+	var selection: [String: [String]] {
 		didSet { defaults.set(selection, forKey: Key.selection) }
 	}
 
 	/// The names the values are stored under.
 	private enum Key {
-		static let menuBar = "menuBar"
-		static let dock = "dock"
 		static let startAtLogin = "startAtLogin"
-		static let menuBarStyle = "menuBarStyle"
 		static let selection = "selection"
 	}
 
@@ -66,10 +39,7 @@ final class Preferences: ObservableObject {
 	/// - Returns: Nothing.
 	init(defaults: UserDefaults = .shared) {
 		self.defaults = defaults
-		menuBar = defaults.object(forKey: Key.menuBar) as? Bool ?? true
-		dock = defaults.object(forKey: Key.dock) as? Bool ?? true
 		startAtLogin = defaults.object(forKey: Key.startAtLogin) as? Bool ?? false
-		menuBarStyle = MenuBarStyle(rawValue: defaults.string(forKey: Key.menuBarStyle) ?? "") ?? .full
 		selection = defaults.object(forKey: Key.selection) as? [String: [String]] ?? [:]
 	}
 

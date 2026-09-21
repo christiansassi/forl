@@ -2,8 +2,7 @@
 //  FORLApp.swift
 //  Where the app starts.
 //
-//  There is no main window. The app is an accessory until the Dock surface says
-//  otherwise, its interface is the menu bar items and the panel they open, and
+//  There is no main window. The app is an accessory with menu bar items and a panel,
 //  its readings reach the widgets through the group container rather than
 //  through any window at all.
 //
@@ -18,7 +17,7 @@ struct FORLApp: App {
 
 	var body: some Scene {
 		// No scene of its own: every surface this app has is built by the
-		// delegate, because a menu bar item and a Dock icon are not windows and
+		// delegate, because menu bar items are not windows and
 		// SwiftUI has nothing to open for them.
 		Settings {
 			EmptyView()
@@ -40,6 +39,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	/// - Parameter notification: The launch notification, which this ignores.
 	/// - Returns: Nothing.
 	func applicationDidFinishLaunching(_ notification: Notification) {
+		NSApp.setActivationPolicy(.accessory)
+		stopDockHelpers()
+		LegacyImport.migrateGroupIfNeeded()
 		let preferences = Preferences()
 		store = UsageStore(preferences: preferences)
 		panel = PanelController(store: store)
@@ -53,7 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		signInIfNeeded()
 	}
 
-	/// Open the panel when the user clicks the Dock icon.
+	/// Open the panel when the user launches the app again.
 	///
 	/// - Parameters:
 	///   - sender: The application, which this ignores.
@@ -63,6 +65,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
 		panel.show(under: menuBar.firstButton())
 		return false
+	}
+
+	/// Open the panel on the provider requested by a widget or control.
+	func application(_ application: NSApplication, open urls: [URL]) {
+		guard let key = urls.first?.pathComponents.last,
+			providerIdentity(for: key) != nil else { return }
+		NotificationCenter.default.post(name: .forlSelectProvider, object: key)
+		panel.show(under: menuBar.firstButton())
 	}
 
 	/// Stop polling before the process goes.
@@ -96,25 +106,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	/// - Returns: Nothing.
 	private func applySurfaces() {
 		menuBar.sync()
+	}
 
-		guard store.preferences.dock else {
-			NSApp.setActivationPolicy(.accessory)
-			return
+	/// Stop helper processes left running by versions that offered Dock tiles.
+	private func stopDockHelpers() {
+		for bundleID in ["io.forl.app.dock.claude", "io.forl.app.dock.chatgpt"] {
+			NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).forEach { $0.terminate() }
 		}
-		NSApp.setActivationPolicy(.regular)
-
-		guard
-			let state = store.active.first,
-			let metric = state.displayed(store.preferences).first
-		else {
-			DockIcon.show(percent: nil, accent: .accentColor, name: "FORL")
-			return
-		}
-		DockIcon.show(
-			percent: metric.percent,
-			accent: state.provider.accent,
-			name: state.tooltip(for: metric)
-		)
 	}
 
 	/// Put the user in front of a sign-in when nobody is signed in at all.

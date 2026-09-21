@@ -3,13 +3,9 @@
 //  Where the app keeps the sign-ins it made for itself.
 //
 //  In a file inside the group container, readable and writable by this user and
-//  nobody else. Not in the keychain, and the reason is worth writing down: a
-//  keychain item's access control is tied to the code signature of the app that
-//  made it, and this app is signed ad-hoc, which gives it a different identity
-//  every time it is built. macOS then asks for the login password on every
-//  launch and refuses the correct one, because the app asking is not, as far as
-//  the keychain is concerned, the app that stored the item. An app signed with a
-//  stable certificate could use the keychain and should; this one cannot.
+//  nobody else. File storage was introduced for ad-hoc builds whose changing
+//  code signatures prevented stable keychain access. Keep that storage format
+//  when moving to development signing so existing sign-ins can be migrated.
 //
 //  The file therefore carries refresh tokens, which are the sign-in itself. It
 //  is written with owner-only permissions, in a container only this user can

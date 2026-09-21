@@ -29,9 +29,12 @@ enum Formatting {
 	/// - Parameters:
 	///   - value: Share of the window already used, 0 to 100.
 	///   - label: Name of the window, such as "Current session".
-	/// - Returns: Text such as "34% - Current session".
-	static func tooltip(value: Double, label: String) -> String {
-		"\(percent(value)) - \(label)"
+	///   - resetsAt: Reset time for the reading, or nil when unavailable.
+	/// - Returns: The percentage and window name, followed by the reset time when known.
+	static func tooltip(value: Double, label: String, resetsAt: Date? = nil) -> String {
+		let resetText = reset(resetsAt)
+		let title = "\(percent(value)) - \(label)"
+		return resetText.isEmpty ? title : "\(title) - \(resetText)"
 	}
 
 	/// Return the local wall clock time of a moment, on a twelve hour clock.

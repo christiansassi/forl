@@ -28,6 +28,8 @@ struct UsageEntry: TimelineEntry {
 	var metric: Metric?
 	/// What to say when there is no reading.
 	var message: String
+	/// Whether the provider is signed in and its first reading is still on its way.
+	var loading: Bool = false
 
 	/// Return the color the dial and the mark are drawn in.
 	///
@@ -35,6 +37,33 @@ struct UsageEntry: TimelineEntry {
 	///   belongs to no provider.
 	var accent: Color {
 		providerKey.flatMap { providerIdentity(for: $0)?.accent } ?? .primary
+	}
+
+	/// Resolve a configured reading from one shared snapshot.
+	/// - Parameters:
+	///   - serviceKey: The selected provider, or nil for the first signed-in provider.
+	///   - metricID: A provider-qualified metric identifier, or nil for the session.
+	///   - state: The current shared readings.
+	/// - Returns: The selected reading or a status message, never another provider's usage.
+	static func current(serviceKey: String?, metricID: String?, state: SharedState = SharedStore.load()) -> UsageEntry {
+		let key = serviceKey ?? state.readings.first?.providerKey
+		let service = key.flatMap(providerIdentity(for:))
+		let reading = key.flatMap { state.reading(for: $0) }
+		let prefix = key.map { "\($0)/" } ?? ""
+		let metricKey = metricID.flatMap { $0.hasPrefix(prefix) ? String($0.dropFirst(prefix.count)) : nil } ?? sessionKey
+		let metric = reading?.snapshot?.metrics.first { $0.key == metricKey }
+		let message: String
+		let loading = reading != nil && reading?.signInMessage.isEmpty == true && reading?.snapshot == nil
+		if reading == nil {
+			message = service.map { "Open FORL and sign in to \($0.label)." } ?? "Open FORL and sign in."
+		} else if let reading, !reading.signInMessage.isEmpty {
+			message = reading.signInMessage
+		} else if reading?.snapshot == nil {
+			message = "Loading"
+		} else {
+			message = "This reading is unavailable. Edit the widget to choose another."
+		}
+		return UsageEntry(date: Date(), providerKey: key, label: service?.label ?? "FORL", symbolName: service?.symbolName ?? "ClaudeMark", metric: metric, message: message, loading: loading)
 	}
 }
 
@@ -62,7 +91,7 @@ struct UsageProvider: AppIntentTimelineProvider {
 	///   - context: The widget's context, which this ignores.
 	/// - Returns: The entry to draw.
 	func snapshot(for configuration: SelectServiceIntent, in context: Context) async -> UsageEntry {
-		current(for: configuration.service?.id)
+		UsageEntry.current(serviceKey: configuration.service?.id, metricID: configuration.metric?.id)
 	}
 
 	/// Return the timeline the widget follows.
@@ -77,46 +106,9 @@ struct UsageProvider: AppIntentTimelineProvider {
 	/// - Returns: The timeline to follow.
 	func timeline(for configuration: SelectServiceIntent, in context: Context) async -> Timeline<UsageEntry> {
 		Timeline(
-			entries: [current(for: configuration.service?.id)],
+			entries: [UsageEntry.current(serviceKey: configuration.service?.id, metricID: configuration.metric?.id)],
 			policy: .after(Date().addingTimeInterval(pollInterval))
 		)
 	}
 
-	/// Return the reading the app last wrote, for one service.
-	///
-	/// - Parameter serviceKey: The service the widget was set to, or nil for
-	///   whichever is signed in first.
-	/// - Returns: That service's chosen metric, or an entry that says why there
-	///   is nothing to show.
-	private func current(for serviceKey: String?) -> UsageEntry {
-		let state = SharedStore.load()
-		let wanted = serviceKey.flatMap { state.reading(for: $0) }
-		guard
-			let reading = wanted ?? state.readings.first,
-			let service = providerIdentity(for: reading.providerKey)
-		else {
-			let named = serviceKey.flatMap { providerIdentity(for: $0) }
-			return UsageEntry(
-				date: Date(),
-				providerKey: named?.key,
-				label: named?.label ?? "FORL",
-				symbolName: named?.symbolName ?? "ClaudeMark",
-				metric: nil,
-				message: named.map { "Open FORL and sign in to \($0.label)." } ?? "Open FORL and sign in."
-			)
-		}
-
-		let chosen = StoredSelection.keys(for: reading.providerKey)
-		let metrics = reading.snapshot?.metrics ?? []
-		let metric = chosen.compactMap { key in metrics.first { $0.key == key } }.first ?? metrics.first
-
-		return UsageEntry(
-			date: Date(),
-			providerKey: reading.providerKey,
-			label: service.label,
-			symbolName: service.symbolName,
-			metric: metric,
-			message: reading.signInMessage.isEmpty ? "Loading" : reading.signInMessage
-		)
-	}
 }

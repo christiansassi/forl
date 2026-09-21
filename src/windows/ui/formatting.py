@@ -27,7 +27,7 @@ def format_percent(percent: float) -> str:
 	return f"{int(round(percent))}%"
 
 
-def format_icon_tooltip(percent: float, label: str) -> str:
+def format_icon_tooltip(percent: float, label: str, resets_at: datetime | None = None) -> str:
 	"""Return the hover text for one notification area icon.
 
 	The reading comes first, because how much is left is the question a hover
@@ -37,12 +37,17 @@ def format_icon_tooltip(percent: float, label: str) -> str:
 	Args:
 		percent: Share of the window already used, 0 to 100. float.
 		label: Name of the window, such as "Current session". str, non-empty.
+		resets_at: Reset time for this reading, or None when unavailable. datetime | None.
 
 	Returns:
 		str: Text such as "34% - Current session".
 	"""
 	require_non_empty_str(label, "label")
-	return f"{format_percent(percent)} - {label}"
+	if resets_at is not None:
+		require_type(resets_at, datetime, "resets_at")
+	title = f"{format_percent(percent)} - {label}"
+	reset = format_reset_at(resets_at)
+	return f"{title} - {reset}" if reset else title
 
 
 def local_minute(moment: datetime) -> datetime:

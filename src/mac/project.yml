@@ -5,10 +5,8 @@
 # read. The generated project is committed beside it, so opening the app in
 # Xcode needs nothing installed.
 #
-# Signing is ad-hoc on purpose: the app uses no capability that has to be
-# registered with Apple, so it builds and runs with no developer account at all.
-# An App Group is still declared, because that is how the widget reads what the
-# app writes, and macOS grants one to an ad-hoc signed app without a profile.
+# Both targets use the same development team so macOS allows the widget to
+# read the app's shared container. The App Group uses that team's identifier.
 
 name: FORL
 options:
@@ -21,13 +19,14 @@ options:
 settings:
   base:
     CODE_SIGN_STYLE: Manual
-    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_IDENTITY: "Apple Development"
     CODE_SIGNING_REQUIRED: YES
     CODE_SIGNING_ALLOWED: YES
-    DEVELOPMENT_TEAM: ""
+    DEVELOPMENT_TEAM: "66YH3B9VCL"
+    FORL_APP_GROUP: "$(DEVELOPMENT_TEAM).io.forl"
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    CURRENT_PROJECT_VERSION: "6"
     ENABLE_HARDENED_RUNTIME: NO
     SWIFT_TREAT_WARNINGS_AS_ERRORS: NO
 
@@ -35,6 +34,16 @@ targets:
   FORL:
     type: application
     platform: macOS
+    preBuildScripts:
+      - name: Cut the shared app icon
+        script: |
+          set -eu
+          bash "$SRCROOT/Tools/GenerateAppIcon.sh" "$SRCROOT/../common/assets/icon.png" "$SRCROOT/FORL/Resources/AppIcon.xcassets/AppIcon.appiconset"
+        inputFiles:
+          - $(SRCROOT)/Tools/GenerateAppIcon.sh
+          - $(SRCROOT)/../common/assets/icon.png
+        outputFiles:
+          - $(SRCROOT)/FORL/Resources/AppIcon.xcassets/AppIcon.appiconset/Contents.json
     sources:
       - path: FORL
         excludes: ["Resources/Info.plist", "Resources/FORL.entitlements"]
@@ -54,12 +63,28 @@ targets:
   FORLWidgets:
     type: app-extension
     platform: macOS
+    preBuildScripts:
+      - name: Generate Control Center gauges
+        script: |
+          set -eu
+          xcrun swiftc -parse-as-library "$SRCROOT/Tools/GenerateControlSymbols.swift" "$SRCROOT/FORL/Design/DialGeometry.swift" -o "$DERIVED_FILE_DIR/GenerateControlSymbols"
+          "$DERIVED_FILE_DIR/GenerateControlSymbols" "$SRCROOT" "$SRCROOT/FORLWidgets/Resources/ControlSymbols.xcassets"
+        inputFiles:
+          - $(SRCROOT)/Tools/GenerateControlSymbols.swift
+          - $(SRCROOT)/FORL/Design/DialGeometry.swift
+          - $(SRCROOT)/../common/assets/claude.svg
+          - $(SRCROOT)/../common/assets/chatgpt.svg
+        outputFiles:
+          - $(SRCROOT)/FORLWidgets/Resources/ControlSymbols.xcassets/Contents.json
     sources:
       - path: FORLWidgets
         excludes: ["Info.plist", "FORLWidgets.entitlements"]
       - path: FORL/Core
       - path: FORL/Design
       - path: FORL/Settings
+      # The marks only. The app icon has a catalog of its own, which this target
+      # has no use for and which its own build phase writes into.
+      - path: FORL/Resources/Assets.xcassets
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.forl.app.widgets

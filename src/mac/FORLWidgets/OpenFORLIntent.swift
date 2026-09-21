@@ -1,26 +1,17 @@
-//
-//  OpenFORLIntent.swift
-//  What a click on the Control Center control does.
-//
-//  Opens the app, which is where the panel, the settings and the sign-in are.
-//  The control itself shows one number and offers no choice, because Control
-//  Center has room for one number and no choice.
-//
+// Open the provider represented by a Control Center reading.
 
 import AppIntents
+import AppKit
 import Foundation
 
-/// Bring the app forward.
 struct OpenFORLIntent: AppIntent {
 	static let title: LocalizedStringResource = "Open FORL"
-	static let openAppWhenRun = true
-
-	/// Run the intent.
-	///
-	/// - Returns: An empty result, the app having been opened by the system on
-	///   the strength of `openAppWhenRun`.
-	/// - Throws: Nothing.
-	func perform() async throws -> some IntentResult {
-		.result()
+	@Parameter(title: "Provider") var providerKey: String
+	init() { providerKey = "claude" }
+	init(providerKey: String) { self.providerKey = providerKey }
+	@MainActor func perform() async throws -> some IntentResult {
+		let key = providerIdentity(for: providerKey)?.key ?? "claude"
+		_ = try await NSWorkspace.shared.open(URL(string: "forl://provider/\(key)")!, configuration: NSWorkspace.OpenConfiguration())
+		return .result()
 	}
 }
