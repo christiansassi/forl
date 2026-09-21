@@ -1,4 +1,10 @@
-"""Build the Windows executable using the current Python environment."""
+"""Build the Windows executable using the current Python environment.
+
+What PyInstaller prints is all that is printed: the build reports its own
+progress, warnings and result, and nothing is added around it. The only lines
+this script writes itself are the two that explain why a build cannot start at
+all, on another platform or on a Python too old to run the widget.
+"""
 
 from __future__ import annotations
 
@@ -30,7 +36,6 @@ def build_icon() -> Path | None:
 			which builds an executable with the default Python icon.
 	"""
 	if not SHARED_ICON.is_file():
-		print(f"No icon at {SHARED_ICON}, building without one.", file=sys.stderr)
 		return None
 	BUILD_DIR.mkdir(parents=True, exist_ok=True)
 	target = BUILD_DIR / "FORL.ico"
@@ -43,7 +48,8 @@ def main() -> int:
 	"""Package the windowed executable with the installed dependencies.
 
 	Returns:
-		int: Zero on success, or a nonzero status when a build step fails.
+		int: The exit status of PyInstaller, which is zero on success, or 1 when
+		the build cannot start on this machine.
 	"""
 	if sys.platform != "win32":
 		print("Build FORL.exe on Windows with Python 3.10 or newer.", file=sys.stderr)
@@ -51,27 +57,23 @@ def main() -> int:
 	if sys.version_info < (3, 10):
 		print("Python 3.10 or newer is required.", file=sys.stderr)
 		return 1
-	try:
-		icon = build_icon()
-		environment = os.environ.copy()
-		environment["PYINSTALLER_CONFIG_DIR"] = str(BUILD_DIR / "cache")
-		subprocess.run([
-			sys.executable, "-m", "PyInstaller",
-			"--noconfirm", "--onefile", "--windowed", "--name", "FORL",
-			"--distpath", str(DIST_DIR),
-			"--workpath", str(BUILD_DIR / "work"),
-			"--specpath", str(BUILD_DIR),
-			"--paths", str(ROOT_DIR),
-			"--add-data", f"{ROOT_DIR / 'src' / 'common' / 'assets'}:src/common/assets",
-			"--hidden-import", "pystray._win32",
-			*(["--icon", str(icon)] if icon else []),
-			str(WINDOWS_DIR / "main.py"),
-		], cwd=WINDOWS_DIR, env=environment, check=True)
-	except (OSError, subprocess.CalledProcessError) as error:
-		print(f"Build failed: {error}", file=sys.stderr)
-		return 1
-	print(f"Built {DIST_DIR / 'FORL.exe'}")
-	return 0
+	icon = build_icon()
+	environment = os.environ.copy()
+	environment["PYINSTALLER_CONFIG_DIR"] = str(BUILD_DIR / "cache")
+	# PyInstaller's own output is left to reach the console, and its exit
+	# status is passed on: it already says what failed when something does.
+	return subprocess.run([
+		sys.executable, "-m", "PyInstaller",
+		"--noconfirm", "--onefile", "--windowed", "--name", "FORL",
+		"--distpath", str(DIST_DIR),
+		"--workpath", str(BUILD_DIR / "work"),
+		"--specpath", str(BUILD_DIR),
+		"--paths", str(ROOT_DIR),
+		"--add-data", f"{ROOT_DIR / 'src' / 'common' / 'assets'}:src/common/assets",
+		"--hidden-import", "pystray._win32",
+		*(["--icon", str(icon)] if icon else []),
+		str(WINDOWS_DIR / "main.py"),
+	], cwd=WINDOWS_DIR, env=environment).returncode
 
 
 if __name__ == "__main__":

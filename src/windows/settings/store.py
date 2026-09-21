@@ -1,10 +1,14 @@
 """The preferences file, and the defaults used when there is none.
 
-One file holds both providers, keyed by provider key, so a machine running the
-Claude widget and the ChatGPT widget at once keeps one document rather than two.
-Each instance owns one section of it and never writes another's, which is why
-saving re-reads the file first: the other widget may have written its own
-section since this one last looked.
+One file holds both providers, keyed by provider key, and one more section for
+what belongs to the widget as a whole, which is whether it starts at sign-in.
+Saving any section re-reads the file first and writes only that section, so a
+section written since this process last looked is not put back to what it was.
+
+Whether the widget starts at sign-in used to be kept per provider, because each
+provider ran in a process of its own. A file written then has no general
+section; its answer is taken from the provider sections instead, and is on when
+either of them was.
 
 Nothing here raises for a file that cannot be read. A preferences file that is
 missing, unreadable or malformed simply gives the defaults, because a widget
@@ -30,6 +34,8 @@ from ..validation import require_non_empty_str, require_type
 
 SETTINGS_FILE = "settings.json"
 
+GENERAL_SECTION = "general"
+
 STARTUP_FIELD = "start_on_startup"
 VIEWS_FIELD = "views"
 MENU_BAR_FIELD = "menu_bar"
@@ -47,27 +53,23 @@ DEFAULT_DOCK = True
 
 @dataclass(frozen=True)
 class Preferences:
-	"""What one provider's widget remembers between runs.
+	"""What the widget remembers about one provider between runs.
 
 	Attributes:
-		start_on_startup: Whether the widget should be launched when the user
-			signs in to the machine. bool.
 		views: Keys of the usages shown in the notification area or the menu bar,
-			in the order the icons should appear. Empty means the widget has no
-			stored selection and should fall back to its own default. tuple of
-			str.
+			in the order the icons should appear. Empty means the user chose to
+			show none. None means nothing was ever chosen, and the widget falls
+			back to its own default. tuple of str, or None.
 		menu_bar: Kept for a preferences file an older widget wrote. bool.
 		dock: Kept for a preferences file an older widget wrote. bool.
 	"""
 
-	start_on_startup: bool
-	views: tuple[str, ...]
+	views: tuple[str, ...] | None
 	menu_bar: bool = DEFAULT_MENU_BAR
 	dock: bool = DEFAULT_DOCK
 
 
-
-DEFAULTS = Preferences(start_on_startup=DEFAULT_START_ON_STARTUP, views=())
+DEFAULTS = Preferences(views=None)
 
 
 def settings_path() -> Path:
@@ -82,18 +84,44 @@ def settings_path() -> Path:
 	return data_file(SETTINGS_FILE)
 
 
-def _section(provider_key: str) -> dict[str, Any]:
-	"""Return the stored section of one provider, as a plain dictionary.
+def _section(name: str) -> dict[str, Any]:
+	"""Return one stored section, as a plain dictionary.
 
 	Args:
-		provider_key: Key of the provider, such as "claude". str, non-empty.
+		name: Key of the section, a provider key such as "claude" or
+			GENERAL_SECTION. str, non-empty.
 
 	Returns:
 		dict: The section, empty when the file or the section is missing.
 	"""
 	document = read_json(settings_path()) or {}
-	section = document.get(provider_key)
+	section = document.get(name)
 	return section if isinstance(section, dict) else {}
+
+
+def _write_section(name: str, section: dict[str, Any]) -> bool:
+	"""Replace one section of the file, leaving every other section as it is.
+
+	Args:
+		name: Key of the section. str, non-empty.
+		section: The values to store under it. dict.
+
+	Returns:
+		bool: True when the file was written. False when it could not be, which
+		costs the user the choice at the next launch and nothing more.
+	"""
+	require_non_empty_str(name, "name")
+	require_type(section, dict, "section")
+
+	path = settings_path()
+	document = read_json(path) or {}
+	document[name] = section
+	try:
+		path.parent.mkdir(parents=True, exist_ok=True)
+		write_json(path, document)
+	except OSError:
+		return False
+	return True
 
 
 def _flag(section: dict[str, Any], field: str, fallback: bool) -> bool:
@@ -132,8 +160,7 @@ def load(provider_key: str) -> Preferences:
 	section = _section(provider_key)
 	views = section.get(VIEWS_FIELD)
 	return Preferences(
-		start_on_startup=_flag(section, STARTUP_FIELD, DEFAULTS.start_on_startup),
-		views=tuple(view for view in views if isinstance(view, str) and view) if isinstance(views, list) else (),
+		views=tuple(view for view in views if isinstance(view, str) and view) if isinstance(views, list) else None,
 		menu_bar=_flag(section, MENU_BAR_FIELD, DEFAULTS.menu_bar),
 		dock=_flag(section, DOCK_FIELD, DEFAULTS.dock),
 	)
@@ -152,18 +179,43 @@ def save(provider_key: str, preferences: Preferences) -> bool:
 	"""
 	require_non_empty_str(provider_key, "provider_key")
 	require_type(preferences, Preferences, "preferences")
+	section: dict[str, Any] = {MENU_BAR_FIELD: preferences.menu_bar, DOCK_FIELD: preferences.dock}
+	if preferences.views is not None:
+		section[VIEWS_FIELD] = list(preferences.views)
+	return _write_section(provider_key, section)
 
-	path = settings_path()
-	document = read_json(path) or {}
-	document[provider_key] = {
-		STARTUP_FIELD: preferences.start_on_startup,
-		VIEWS_FIELD: list(preferences.views),
-		MENU_BAR_FIELD: preferences.menu_bar,
-		DOCK_FIELD: preferences.dock,
-	}
-	try:
-		path.parent.mkdir(parents=True, exist_ok=True)
-		write_json(path, document)
-	except OSError:
-		return False
-	return True
+
+def load_start_on_startup() -> bool:
+	"""Return whether the widget should start when the user signs in.
+
+	Returns:
+		bool: The stored choice. From a file written before the choice was one
+		for the whole widget, True when any provider section had it on; with no
+		stored answer at all, DEFAULT_START_ON_STARTUP.
+	"""
+	general = _section(GENERAL_SECTION)
+	if isinstance(general.get(STARTUP_FIELD), bool):
+		return general[STARTUP_FIELD]
+
+	document = read_json(settings_path()) or {}
+	older = [
+		section[STARTUP_FIELD]
+		for name, section in document.items()
+		if name != GENERAL_SECTION and isinstance(section, dict) and isinstance(section.get(STARTUP_FIELD), bool)
+	]
+	return any(older) if older else DEFAULT_START_ON_STARTUP
+
+
+def save_start_on_startup(enabled: bool) -> bool:
+	"""Store whether the widget should start when the user signs in.
+
+	Args:
+		enabled: The choice to store. bool.
+
+	Returns:
+		bool: True when the file was written, False when it could not be.
+	"""
+	require_type(enabled, bool, "enabled")
+	section = _section(GENERAL_SECTION)
+	section[STARTUP_FIELD] = enabled
+	return _write_section(GENERAL_SECTION, section)

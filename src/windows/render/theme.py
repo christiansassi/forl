@@ -2,21 +2,23 @@
 
 Two color ideas live here. A brand accent marks the parts of the interface that
 belong to the product, the mark, the refresh control and the spinner; it comes
-from the provider, so the panel is orange for Claude and white for ChatGPT. The
-usage ramp is a separate scale that runs from green to red with the percentage,
-so a bar says how close to its limit it is by color alone, without anyone having
-to read the number.
+from the provider, so the panel is orange for Claude and follows the text color
+for ChatGPT, whose mark is monochrome. The usage ramp is a separate scale that
+runs from green to red with the percentage, so a bar says how close to its limit
+it is by color alone, without anyone having to read the number.
 
-The rest follows Apple's dark system palette and type scale: a near black
-background, label colors expressed as white at decreasing prominence, and a
-small set of named text styles built from size and weight together.
+The surfaces and the text follow Windows. There is one palette for the light
+app mode and one for the dark, both taken from the colors Windows 11 draws its
+own flyouts in, and the popups ask which one is in force each time they open,
+so they match the rest of the desktop rather than keeping a look of their own.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import NamedTuple
 
-from ..validation import require_member, require_non_empty_str, require_number_in_range, require_positive_int
+from ..validation import require_member, require_non_empty_str, require_number_in_range, require_positive_int, require_type
 
 # Stops of the usage ramp as (percentage, (red, green, blue)). A value between
 # two stops is mixed from them, so the bar shifts continuously rather than
@@ -42,16 +44,58 @@ SWITCH_OFF_OPACITY = 0.22
 # bold text is 3 to 1; a mark larger than text carries a little less.
 MIN_LIGHT_CONTRAST = 2.5
 
+# The two inks laid over a colored fill, such as the knob of a switch or the
+# reading on a tray icon: white, and a near black for a fill too pale to carry
+# white. They do not change with the app mode, because the fill under them
+# does not either.
 SURFACE_BASE = "#1c1c1e"
-
-# Label colors, brightest first, matching label, secondary and tertiary.
 LABEL_PRIMARY = "#ffffff"
-LABEL_SECONDARY = "#a1a1a6"
-LABEL_TERTIARY = "#6e6e73"
 
-# What a refusal is written in: the red the usage ramp ends at, so the interface
-# keeps one red.
-LABEL_ERROR = "#{:02x}{:02x}{:02x}".format(*USAGE_RAMP[-1][1])
+# Contrast below which an accent no longer reads as a mark on a surface, and the
+# text color of that surface stands in for it. The OpenAI mark is white, which
+# vanishes on a light surface, so this is what turns it dark there.
+MIN_ACCENT_CONTRAST = 2.0
+
+
+class Palette(NamedTuple):
+	"""The surface and text colors of one app mode.
+
+	Attributes:
+		dark: Whether this is the dark mode, which the window manager is told so
+			the corners and the border are drawn to match. bool.
+		surface: Background of a popup. str, "#rrggbb".
+		label_primary: Text that is read first, such as a name or a title. str,
+			"#rrggbb".
+		label_secondary: Text that describes, such as a percentage or a reset
+			time. str, "#rrggbb".
+		label_tertiary: Text that only annotates, such as the plan beside the
+			product name. str, "#rrggbb".
+	"""
+
+	dark: bool
+	surface: str
+	label_primary: str
+	label_secondary: str
+	label_tertiary: str
+
+
+# The Windows 11 flyout surface and the three text fill colors, flattened onto
+# that surface: Tk draws opaque colors only, so each text color, which Windows
+# defines as the foreground at an opacity, is given as the color it comes out.
+DARK_PALETTE = Palette(
+	dark=True,
+	surface="#2c2c2c",
+	label_primary="#ffffff",
+	label_secondary="#cecece",
+	label_tertiary="#9c9c9c",
+)
+LIGHT_PALETTE = Palette(
+	dark=False,
+	surface="#f9f9f9",
+	label_primary="#1a1a1a",
+	label_secondary="#5f5f5f",
+	label_tertiary="#8a8a8a",
+)
 
 UI_FONT_FAMILY = "Segoe UI"
 
@@ -192,6 +236,39 @@ def carries_light_text(color: tuple[int, int, int]) -> bool:
 	return 1.05 / (relative_luminance(color) + 0.05) >= MIN_LIGHT_CONTRAST
 
 
+def contrast_ratio(first: str, second: str) -> float:
+	"""Return the WCAG contrast ratio between two colors.
+
+	Args:
+		first: One color as a "#rrggbb" string. str, non-empty.
+		second: The other color as a "#rrggbb" string. str, non-empty.
+
+	Returns:
+		float: The ratio, 1 for two identical colors and 21 for black on white.
+	"""
+	one = relative_luminance(hex_to_rgb(first))
+	two = relative_luminance(hex_to_rgb(second))
+	return (max(one, two) + 0.05) / (min(one, two) + 0.05)
+
+
+def readable_accent(accent: str, palette: Palette) -> str:
+	"""Return the color a brand accent is drawn in on a palette's surface.
+
+	Args:
+		accent: The provider's accent as a "#rrggbb" string. str, non-empty.
+		palette: The palette in force. Palette.
+
+	Returns:
+		str: The accent itself when it reads against the surface, otherwise the
+		primary text color of the palette.
+	"""
+	require_non_empty_str(accent, "accent")
+	require_type(palette, Palette, "palette")
+	if contrast_ratio(accent, palette.surface) < MIN_ACCENT_CONTRAST:
+		return palette.label_primary
+	return accent
+
+
 def on_accent(accent: str) -> str:
 	"""Return the color to lay over a brand accent so it stays visible.
 
@@ -226,16 +303,19 @@ def mix_hex(background: str, foreground: str, amount: float) -> str:
 	return "#{:02x}{:02x}{:02x}".format(*blended)
 
 
-def track_hex(percent: float) -> str:
+def track_hex(percent: float, surface: str) -> str:
 	"""Return the track color for a bar, which is the bar color dimmed.
 
 	Args:
 		percent: Share of the window already used, 0 to 100. float.
+		surface: The color the bar is drawn on, as a "#rrggbb" string. str,
+			non-empty.
 
 	Returns:
 		str: The color as a "#rrggbb" string.
 	"""
-	return mix_hex(SURFACE_BASE, usage_hex(percent), TRACK_OPACITY)
+	require_non_empty_str(surface, "surface")
+	return mix_hex(surface, usage_hex(percent), TRACK_OPACITY)
 
 
 def load_font(size: int, weight: str = "bold"):

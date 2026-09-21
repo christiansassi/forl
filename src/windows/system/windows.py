@@ -42,6 +42,11 @@ DWMWCP_ROUND = 2
 
 PROCESS_SYSTEM_DPI_AWARE = 1
 
+# Where Windows keeps the light or dark choice for applications, as opposed to
+# the one for the taskbar and the Start menu, which is a separate value beside it.
+PERSONALIZE_KEY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+APPS_LIGHT_VALUE = "AppsUseLightTheme"
+
 
 def detach(name: str) -> None:
 	"""Put this process into the background and give the terminal back.
@@ -164,6 +169,29 @@ def animations_enabled() -> bool:
 	return bool(enabled.value) if ok else True
 
 
+def uses_light_theme() -> bool:
+	"""Return whether the user has chosen the light mode for applications.
+
+	Read each time it is asked rather than once, so a popup opened after the
+	user changes the mode in Settings comes up in the new one.
+
+	Returns:
+		bool: True for the light mode. False for the dark mode, and False when
+		the setting cannot be read, which is what this widget drew before it
+		followed the setting at all.
+	"""
+	try:
+		import winreg
+	except ImportError:
+		return False
+	try:
+		with winreg.OpenKey(winreg.HKEY_CURRENT_USER, PERSONALIZE_KEY_PATH) as key:
+			value, _kind = winreg.QueryValueEx(key, APPS_LIGHT_VALUE)
+	except OSError:
+		return False
+	return bool(value)
+
+
 def _set_window_attribute(window_handle: int, attribute: int, value: int) -> bool:
 	"""Set one desktop window manager attribute on a window.
 
@@ -187,8 +215,8 @@ def _set_window_attribute(window_handle: int, attribute: int, value: int) -> boo
 	return result == 0
 
 
-def apply_panel_chrome(window_handle: int) -> None:
-	"""Give a window rounded corners and the dark window manager treatment.
+def apply_panel_chrome(window_handle: int, dark: bool) -> None:
+	"""Give a window rounded corners and the window manager treatment of a mode.
 
 	Rounding is done by the desktop window manager rather than by masking the
 	window, so the corners are composited with the wallpaper behind them and stay
@@ -197,12 +225,15 @@ def apply_panel_chrome(window_handle: int) -> None:
 
 	Args:
 		window_handle: The native window handle of the panel. int.
+		dark: Whether the window is drawn in the dark mode, which decides the
+			color of the border the window manager draws around it. bool.
 
 	Returns:
 		None.
 	"""
 	require_type(window_handle, int, "window_handle")
-	_set_window_attribute(window_handle, DWMWA_USE_IMMERSIVE_DARK_MODE, 1)
+	require_type(dark, bool, "dark")
+	_set_window_attribute(window_handle, DWMWA_USE_IMMERSIVE_DARK_MODE, 1 if dark else 0)
 	_set_window_attribute(window_handle, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND)
 
 
@@ -211,7 +242,12 @@ def apply_panel_chrome(window_handle: int) -> None:
 # and undo it from outside the widget, and is per user, which matches a
 # preference about one person's notification area.
 RUN_KEY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
-VALUE_NAME_PREFIX = "FORL-"
+ENTRY_NAME = "FORL"
+
+# The entries written while each service ran in a process of its own. One
+# process now watches both, so these are removed whenever the entry is written,
+# or a sign-in would start the same widget twice.
+LEGACY_ENTRY_NAMES = ("FORL-claude", "FORL-chatgpt")
 
 ENTRY_SCRIPT = Path(__file__).resolve().parents[1] / "main.py"
 
@@ -220,19 +256,6 @@ ENTRY_SCRIPT = Path(__file__).resolve().parents[1] / "main.py"
 # every sign-in.
 WINDOWED_INTERPRETER = "pythonw.exe"
 CONSOLE_INTERPRETER = "python.exe"
-
-
-def entry_name(provider_key: str) -> str:
-	"""Return the registry value name that holds one provider's startup entry.
-
-	Args:
-		provider_key: Key of the provider, such as "claude". str, non-empty.
-
-	Returns:
-		str: The value name.
-	"""
-	require_non_empty_str(provider_key, "provider_key")
-	return f"{VALUE_NAME_PREFIX}{provider_key}"
 
 
 def _interpreter() -> Path:
@@ -250,26 +273,23 @@ def _interpreter() -> Path:
 	return running
 
 
-def command_line(provider_key: str) -> str:
-	"""Return the command Windows should run to start one provider's widget.
-
-	Args:
-		provider_key: Key of the provider, such as "claude". str, non-empty.
+def command_line() -> str:
+	"""Return the command Windows should run to start the widget.
 
 	Returns:
 		str: The command line, with every path quoted as Windows expects.
 	"""
-	require_non_empty_str(provider_key, "provider_key")
 	if getattr(sys, "frozen", False):
-		return subprocess.list2cmdline([sys.executable, f"--{provider_key}"])
-	return subprocess.list2cmdline([str(_interpreter()), str(ENTRY_SCRIPT), f"--{provider_key}"])
+		return subprocess.list2cmdline([sys.executable])
+	return subprocess.list2cmdline([str(_interpreter()), str(ENTRY_SCRIPT)])
 
 
-def set_startup_entry(provider_key: str, enabled: bool) -> bool:
-	"""Add or remove the entry that starts one provider's widget at sign-in.
+def set_startup_entry(enabled: bool) -> bool:
+	"""Add or remove the entry that starts the widget at sign-in.
+
+	The entries an older version wrote, one per service, are removed either way.
 
 	Args:
-		provider_key: Key of the provider, such as "claude". str, non-empty.
 		enabled: True to write the entry, False to remove it. bool.
 
 	Returns:
@@ -277,7 +297,6 @@ def set_startup_entry(provider_key: str, enabled: bool) -> bool:
 		entry was already absent and removal was asked for. False when the
 		registry could not be reached or written.
 	"""
-	require_non_empty_str(provider_key, "provider_key")
 	require_type(enabled, bool, "enabled")
 
 	try:
@@ -285,16 +304,15 @@ def set_startup_entry(provider_key: str, enabled: bool) -> bool:
 	except ImportError:
 		return False
 
-	name = entry_name(provider_key)
 	try:
 		with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY_PATH, 0, winreg.KEY_SET_VALUE) as key:
+			for name in LEGACY_ENTRY_NAMES + (() if enabled else (ENTRY_NAME,)):
+				try:
+					winreg.DeleteValue(key, name)
+				except FileNotFoundError:
+					pass
 			if enabled:
-				winreg.SetValueEx(key, name, 0, winreg.REG_SZ, command_line(provider_key))
-				return True
-			try:
-				winreg.DeleteValue(key, name)
-			except FileNotFoundError:
-				pass
+				winreg.SetValueEx(key, ENTRY_NAME, 0, winreg.REG_SZ, command_line())
 			return True
 	except OSError:
 		return False

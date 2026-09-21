@@ -7,7 +7,7 @@ canvas as an image.
 
 The bars of the panel, the highlight behind a menu row and the track of a switch
 are the same rounded rectangle at three different radii, so they share one
-renderer.
+renderer. The tabs and the checkboxes add a border to it.
 """
 
 from __future__ import annotations
@@ -22,6 +22,12 @@ SUPERSAMPLE = 4
 # How far the knob of a switch sits inside its track, as a share of the track
 # height. The system switch leaves about this much on every side.
 KNOB_INSET_RATIO = 0.085
+
+# Corner radius and border of a checkbox, and the weight of its check, as shares
+# of its size.
+CHECKBOX_RADIUS_RATIO = 0.22
+CHECKBOX_STROKE_RATIO = 0.08
+CHECK_STROKE_RATIO = 0.13
 
 
 def rounded_fill(width: int, height: int, color: str, radius: float) -> Image.Image:
@@ -91,3 +97,80 @@ def render_switch(width: int, height: int, fraction: float, track_color: str, kn
 	left = inset + travel * fraction
 	draw.ellipse((left, inset, left + diameter, inset + diameter), fill=knob_color)
 	return image.resize((width, height), Image.LANCZOS)
+
+
+def outlined_fill(width: int, height: int, fill: str, outline: str, radius: float, stroke: float) -> Image.Image:
+	"""Render a filled rounded rectangle with a border, as an RGBA image.
+
+	The border is drawn inside the shape rather than centered on its edge, so the
+	image is exactly the size asked for and two of them laid side by side do not
+	overlap.
+
+	Args:
+		width: Width in pixels. int, 1 or more after rounding.
+		height: Height in pixels. int, 1 or more after rounding.
+		fill: Color inside the border as a "#rrggbb" string. str, non-empty.
+		outline: Color of the border as a "#rrggbb" string. str, non-empty.
+		radius: Corner radius of the outer edge in pixels. float, 0 or more.
+		stroke: Thickness of the border in pixels. float, 0 or more.
+
+	Returns:
+		PIL.Image.Image: The shape, mode "RGBA", on a transparent background.
+	"""
+	require_non_empty_str(fill, "fill")
+	require_non_empty_str(outline, "outline")
+	require_type(radius, (int, float), "radius")
+	require_type(stroke, (int, float), "stroke")
+
+	width = max(1, int(round(width)))
+	height = max(1, int(round(height)))
+	scale = SUPERSAMPLE
+	image = Image.new("RGBA", (width * scale, height * scale), TRANSPARENT)
+	ImageDraw.Draw(image).rounded_rectangle(
+		(0, 0, width * scale - 1, height * scale - 1),
+		radius=max(0.0, float(radius)) * scale,
+		fill=fill,
+		outline=outline,
+		width=max(1, int(round(max(0.0, float(stroke)) * scale))),
+	)
+	return image.resize((width, height), Image.LANCZOS)
+
+
+def render_checkbox(size: int, checked: bool, accent: str, mark: str, surface: str, border: str) -> Image.Image:
+	"""Render a checkbox as an RGBA image, the way the Mac app's checkboxes look.
+
+	A checked box is filled with the accent and carries a check mark; an
+	unchecked one is an empty rounded square with a thin border.
+
+	Args:
+		size: Width and height in pixels. int, 1 or more after rounding.
+		checked: Whether the box is checked. bool.
+		accent: Fill of a checked box as a "#rrggbb" string. str, non-empty.
+		mark: Color of the check mark, which has to read on the accent, as a
+			"#rrggbb" string. str, non-empty.
+		surface: Fill of an unchecked box, which is the color it sits on, as a
+			"#rrggbb" string. str, non-empty.
+		border: Border of an unchecked box as a "#rrggbb" string. str, non-empty.
+
+	Returns:
+		PIL.Image.Image: The checkbox, mode "RGBA", on a transparent background.
+	"""
+	require_type(checked, bool, "checked")
+	for name, color in (("accent", accent), ("mark", mark), ("surface", surface), ("border", border)):
+		require_non_empty_str(color, name)
+
+	size = max(1, int(round(size)))
+	radius = size * CHECKBOX_RADIUS_RATIO
+	if not checked:
+		return outlined_fill(size, size, surface, border, radius, max(1.0, size * CHECKBOX_STROKE_RATIO))
+
+	scale = SUPERSAMPLE
+	edge = size * scale
+	image = Image.new("RGBA", (edge, edge), TRANSPARENT)
+	draw = ImageDraw.Draw(image)
+	draw.rounded_rectangle((0, 0, edge - 1, edge - 1), radius=radius * scale, fill=accent)
+	# The check is a short stroke down and a long one up, placed by shares of the
+	# box so it stays in proportion at any size.
+	points = [(edge * 0.27, edge * 0.52), (edge * 0.43, edge * 0.68), (edge * 0.74, edge * 0.34)]
+	draw.line(points, fill=mark, width=max(1, int(round(edge * CHECK_STROKE_RATIO))), joint="curve")
+	return image.resize((size, size), Image.LANCZOS)

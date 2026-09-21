@@ -9,6 +9,10 @@ application and a system menu.
 It behaves the way the menu it replaces did. It opens at the pointer, flipped so
 it always lands inside the work area, it closes on a choice, on Escape, or when
 it loses focus, and a choice is reported through a callback.
+
+One menu serves every icon, so the colors are chosen each time it opens: the
+palette of the app mode in force, and the accent of the service whose icon was
+clicked.
 """
 
 from __future__ import annotations
@@ -20,22 +24,29 @@ from typing import Callable
 from PIL import ImageTk
 
 from ..render.shapes import rounded_fill
-from ..render.theme import LABEL_PRIMARY, LABEL_SECONDARY, SURFACE_BASE, mix_hex, text_style
+from ..render.theme import DARK_PALETTE, Palette, mix_hex, readable_accent, text_style
 from ..validation import require_non_empty_str, require_type
 from ..system import apply_panel_chrome, work_area
 from .core import SEPARATOR, MenuRow
+from .palette import current_palette
 
-ROW_HEIGHT = 30
-CHECK_COLUMN = 24
-PAD_X = 12
-PAD_Y = 6
-TRAILING_PAD = 28
+# Proportions of the Windows 11 context menu: rows inset from the edge by the
+# plate that lights under the pointer, text inset again from the plate, small
+# corners on the plate, and a floor on the width so a menu of one short line
+# reads as a menu rather than as a button.
+ROW_HEIGHT = 32
+PAD_Y = 4
+HIGHLIGHT_INSET = 4
+TEXT_INSET = 12
+CHECK_COLUMN = 20
+TRAILING_PAD = 24
+MIN_WIDTH = 160
 SEPARATOR_HEIGHT = 9
 SCREEN_MARGIN = 6
 
-HIGHLIGHT_OPACITY = 0.10
+HIGHLIGHT_OPACITY = 0.08
 SEPARATOR_OPACITY = 0.12
-HIGHLIGHT_RADIUS = 6
+HIGHLIGHT_RADIUS = 4
 
 CHECK_MARK = "✓"
 
@@ -43,12 +54,11 @@ CHECK_MARK = "✓"
 class TrayMenu:
 	"""A menu drawn in the style of the panel rather than by Windows."""
 
-	def __init__(self, master: tk.Tk, accent: str, on_choose: Callable[[str], None]) -> None:
+	def __init__(self, master: tk.Tk, on_choose: Callable[[str], None]) -> None:
 		"""Create the menu as a hidden child of the application root window.
 
 		Args:
 			master: The application root window. tkinter.Tk.
-			accent: Color of the check marks, as a "#rrggbb" string. str, non-empty.
 			on_choose: Called with the key of the line the user picked. Callable
 				taking one str and returning None.
 
@@ -56,11 +66,11 @@ class TrayMenu:
 			None.
 		"""
 		require_type(master, tk.Tk, "master")
-		require_non_empty_str(accent, "accent")
 		if not callable(on_choose):
 			raise TypeError("on_choose must be callable")
 
-		self._accent = accent
+		self._palette: Palette = DARK_PALETTE
+		self._accent = DARK_PALETTE.label_primary
 		self._on_choose = on_choose
 		self._rows: tuple[MenuRow, ...] = ()
 		self._row_tops: list[tuple[float, float, str]] = []
@@ -74,13 +84,13 @@ class TrayMenu:
 		self._window.overrideredirect(True)
 		self._window.attributes("-topmost", True)
 		self._window.resizable(False, False)
-		self._window.configure(background=SURFACE_BASE)
+		self._window.configure(background=self._palette.surface)
 		self._window.bind("<Escape>", lambda _event: self.hide())
 		self._window.bind("<FocusOut>", lambda _event: self.hide())
 
 		self._canvas = tk.Canvas(
 			self._window,
-			background=SURFACE_BASE,
+			background=self._palette.surface,
 			highlightthickness=0,
 			borderwidth=0,
 		)
@@ -111,11 +121,27 @@ class TrayMenu:
 		"""
 		font = tkfont.Font(root=self._window, font=text_style("row"))
 		widest = max((font.measure(row.label) for row in rows if row.key != SEPARATOR), default=0)
-		width = self._unit(PAD_X + CHECK_COLUMN + TRAILING_PAD) + widest
+		width = max(self._unit(MIN_WIDTH), self._text_left(rows) + widest + self._unit(TRAILING_PAD))
 		height = self._unit(PAD_Y) * 2
 		for row in rows:
 			height += self._unit(SEPARATOR_HEIGHT if row.key == SEPARATOR else ROW_HEIGHT)
 		return int(round(width)), int(round(height))
+
+	def _text_left(self, rows: tuple[MenuRow, ...]) -> float:
+		"""Return where the text of every row starts.
+
+		Room for a check mark is left only when a row carries one, so a menu with
+		nothing checked has its text at the inset every Windows menu uses rather
+		than pushed across by an empty column.
+
+		Args:
+			rows: The lines to be drawn. tuple of MenuRow.
+
+		Returns:
+			float: Distance from the left edge of the menu in device pixels.
+		"""
+		column = CHECK_COLUMN if any(row.checked for row in rows) else 0
+		return self._unit(HIGHLIGHT_INSET + TEXT_INSET + column)
 
 	def _draw(self, width: int) -> None:
 		"""Draw every row, and the highlight that will track the pointer.
@@ -128,13 +154,16 @@ class TrayMenu:
 		"""
 		self._canvas.delete("all")
 		self._row_tops = []
+		surface = self._palette.surface
+		ink = self._palette.label_primary
 
-		inset = self._unit(PAD_X) / 2.0
+		inset = self._unit(HIGHLIGHT_INSET)
+		text_left = self._text_left(self._rows)
 		self._highlight_photo = ImageTk.PhotoImage(
 			rounded_fill(
 				int(round(width - inset * 2)),
 				int(round(self._unit(ROW_HEIGHT))),
-				mix_hex(SURFACE_BASE, LABEL_PRIMARY, HIGHLIGHT_OPACITY),
+				mix_hex(surface, ink, HIGHLIGHT_OPACITY),
 				self._unit(HIGHLIGHT_RADIUS),
 			)
 		)
@@ -145,11 +174,11 @@ class TrayMenu:
 			if row.key == SEPARATOR:
 				middle = y + self._unit(SEPARATOR_HEIGHT) / 2.0
 				self._canvas.create_line(
-					self._unit(PAD_X),
+					inset + self._unit(TEXT_INSET),
 					middle,
-					width - self._unit(PAD_X),
+					width - inset - self._unit(TEXT_INSET),
 					middle,
-					fill=mix_hex(SURFACE_BASE, LABEL_PRIMARY, SEPARATOR_OPACITY),
+					fill=mix_hex(surface, ink, SEPARATOR_OPACITY),
 				)
 				y += self._unit(SEPARATOR_HEIGHT)
 				continue
@@ -158,18 +187,18 @@ class TrayMenu:
 			self._row_tops.append((y, y + height, row.key))
 			if row.checked:
 				self._canvas.create_text(
-					self._unit(PAD_X + CHECK_COLUMN / 2.0),
+					inset + self._unit(TEXT_INSET + CHECK_COLUMN / 2.0),
 					y + height / 2.0,
 					text=CHECK_MARK,
 					font=text_style("row"),
 					fill=self._accent,
 				)
 			self._canvas.create_text(
-				self._unit(PAD_X + CHECK_COLUMN),
+				text_left,
 				y + height / 2.0,
 				text=row.label,
 				font=text_style("row"),
-				fill=LABEL_PRIMARY if row.checked else LABEL_SECONDARY,
+				fill=ink,
 				anchor="w",
 			)
 			y += height
@@ -199,7 +228,7 @@ class TrayMenu:
 		"""
 		for top, _bottom, candidate in self._row_tops:
 			if candidate == key:
-				self._canvas.coords(self._highlight_item, self._unit(PAD_X) / 2.0, top)
+				self._canvas.coords(self._highlight_item, self._unit(HIGHLIGHT_INSET), top)
 				self._canvas.itemconfigure(self._highlight_item, state="normal")
 				return
 		self._canvas.itemconfigure(self._highlight_item, state="hidden")
@@ -238,7 +267,7 @@ class TrayMenu:
 		"""
 		return self._visible
 
-	def show(self, rows: tuple[MenuRow, ...], pointer: tuple[int, int]) -> None:
+	def show(self, rows: tuple[MenuRow, ...], pointer: tuple[int, int], accent: str) -> None:
 		"""Draw the menu and open it at the pointer.
 
 		The menu opens up and to the left of the pointer, the way a menu from the
@@ -249,6 +278,8 @@ class TrayMenu:
 			rows: The lines to draw, in order. tuple of MenuRow, non-empty.
 			pointer: Where the pointer is as (x, y) in screen pixels. tuple of
 				two ints.
+			accent: Color of the service whose icon was clicked, which the check
+				marks are drawn in, as a "#rrggbb" string. str, non-empty.
 
 		Returns:
 			None.
@@ -256,7 +287,12 @@ class TrayMenu:
 		require_type(rows, tuple, "rows")
 		if not rows:
 			raise ValueError("rows must not be empty")
+		require_non_empty_str(accent, "accent")
 
+		self._palette = current_palette()
+		self._accent = readable_accent(accent, self._palette)
+		self._window.configure(background=self._palette.surface)
+		self._canvas.configure(background=self._palette.surface)
 		self._window.update_idletasks()
 		self._scale = self._window.winfo_fpixels("1i") / 96.0
 		self._rows = rows
@@ -274,7 +310,7 @@ class TrayMenu:
 		self._window.geometry(f"{width}x{height}+{x}+{y}")
 
 		self._window.deiconify()
-		apply_panel_chrome(self._window_handle())
+		apply_panel_chrome(self._window_handle(), self._palette.dark)
 		self._window.lift()
 		self._window.focus_force()
 		self._highlight(None)

@@ -2,8 +2,9 @@
 
 Everything that is not portable lives in a backend: where the taskbar leaves
 room, how large a tray icon is drawn, how a window is given the system chrome,
-how a second copy of the widget is kept from starting, what runs at sign-in, and
-how a widget started from a terminal gets out of it.
+which app mode the user chose, how a second copy of the widget is kept from
+starting, what runs at sign-in, and how a widget started from a terminal gets
+out of it.
 One backend is chosen here, once, by the platform, and the rest of the widget
 imports these names without knowing which one answered.
 
@@ -53,6 +54,7 @@ from .windows import (
 	enable_dpi_awareness,
 	set_startup_entry,
 	small_icon_size,
+	uses_light_theme,
 	work_area,
 )
 
@@ -67,5 +69,6 @@ __all__ = [
 	"is_supported",
 	"set_startup_entry",
 	"small_icon_size",
+	"uses_light_theme",
 	"work_area",
 ]

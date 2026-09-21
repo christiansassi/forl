@@ -11,6 +11,13 @@ whichever thread owns the interface, since the poller and the sign-in each have
 a thread of their own and neither may touch a window. `on_change` is called from
 that thread whenever something a surface shows has changed, and is the only
 signal a platform needs to redraw.
+
+One core watches one service, and the widget holds one core per service, the
+way the Mac app holds one provider state per service. A service nobody has
+signed in to is never sent to the browser on its own: the panel offers the
+sign-in and the user starts it. Only a sign-in that was working and has run out
+opens the browser by itself, once, so the reading comes back without a trip
+through the settings.
 """
 
 from __future__ import annotations
@@ -23,10 +30,9 @@ from typing import Callable, NamedTuple
 from ..auth import store as credentials
 from ..providers import Provider
 from ..settings.store import Preferences, load as load_preferences, save as save_preferences
-from ..system import set_startup_entry
 from ..usage.errors import CredentialsError, UsageRequestError
 from ..usage.poller import PollResult, UsagePoller
-from ..usage.snapshot import LIMIT_GROUP, PRODUCT_GROUP, SESSION_KEY, UsageSnapshot, now_utc
+from ..usage.snapshot import LIMIT_GROUP, PRODUCT_GROUP, SESSION_KEY, Metric, UsageSnapshot, now_utc
 from ..validation import require_non_empty_str, require_positive_int, require_type
 from .formatting import format_icon_tooltip, format_next_update
 
@@ -39,9 +45,9 @@ LOADING_TEXT = "Loading"
 SEPARATOR = "separator"
 
 QUIT_KEY = "quit"
-QUIT_LABEL = "Quit"
-SETTINGS_KEY = "settings"
-SETTINGS_LABEL = "Settings"
+QUIT_LABEL = "Quit FORL"
+
+NOT_SIGNED_IN_TEXT = "Not signed in"
 
 SIGNING_IN_TEXT = "Signing in. Finish in the browser."
 NO_BROWSER_TEXT = "No browser opened. Use the address below."
@@ -79,8 +85,57 @@ class MetricReading(NamedTuple):
 	tooltip: str
 
 
+class ProviderView(NamedTuple):
+	"""Everything the panel draws for one service, taken at one moment.
+
+	Attributes:
+		provider: The service. Provider.
+		snapshot: The last reading, or None before one and after a sign-out.
+			UsageSnapshot or None.
+		status: The line under the reading, which is the sign-in instruction or
+			the countdown to the next reading. str.
+		sign_in_message: What to say about the sign-in, empty when there is
+			nothing to say. str.
+		sign_in_link: The address a sign-in under way is waiting at, empty when
+			none is. str.
+		refreshing: Whether a reading is in flight. bool.
+		signed_in: Whether a sign-in is stored for the service. bool.
+		signing_in: Whether a browser sign-in is under way. bool.
+		account: Who is signed in, as the settings name them, empty when the
+			sign-in reported no name. str.
+		groups: Every usage the reading reports, grouped as the panel groups
+			them, which is what the Show section lists. tuple of tuple of Metric.
+		displayed: Keys of the usages the tray icons show, which is what the
+			Show section checks. frozenset of str.
+	"""
+
+	provider: Provider
+	snapshot: UsageSnapshot | None
+	status: str
+	sign_in_message: str
+	sign_in_link: str
+	refreshing: bool
+	signed_in: bool
+	signing_in: bool
+	account: str
+	groups: tuple[tuple[Metric, ...], ...]
+	displayed: frozenset[str]
+
+
+def quit_rows() -> tuple[MenuRow, ...]:
+	"""Return the lines of the menu a right click on a tray icon opens.
+
+	Which usages the icons show is chosen in the Show section of the settings,
+	so the menu is left with the one thing the panel does not offer.
+
+	Returns:
+		tuple of MenuRow: The one line that quits the widget.
+	"""
+	return (MenuRow(QUIT_KEY, QUIT_LABEL, False),)
+
+
 class WidgetCore:
-	"""The state of one running widget: one provider, one poller, one selection."""
+	"""The state of one service: one provider, one poller, one selection."""
 
 	def __init__(
 		self,
@@ -128,11 +183,8 @@ class WidgetCore:
 		self._refreshing = False
 
 		self._preferences = load_preferences(provider.key)
-		self._selected: tuple[str, ...] = self._preferences.views or (DEFAULT_METRIC_KEY,)
-		# Written at every launch rather than only when the switch is worked, so
-		# an entry naming a folder the widget has since been moved out of is
-		# corrected instead of failing quietly at the next sign-in.
-		set_startup_entry(provider.key, self._preferences.start_on_startup)
+		views = self._preferences.views
+		self._selected: tuple[str, ...] = views if views is not None else (DEFAULT_METRIC_KEY,)
 
 		self._poller = UsagePoller(
 			read=provider.read,
@@ -197,6 +249,24 @@ class WidgetCore:
 		return self._sign_in_link
 
 	@property
+	def signed_in(self) -> bool:
+		"""Return whether a sign-in is stored for this service.
+
+		Returns:
+			bool: True when there are tokens to read with, expired or not.
+		"""
+		return credentials.load(self._provider.key) is not None
+
+	@property
+	def signing_in(self) -> bool:
+		"""Return whether a browser sign-in is under way.
+
+		Returns:
+			bool: True from the moment the sign-in starts until it ends.
+		"""
+		return self._signing_in
+
+	@property
 	def refreshing(self) -> bool:
 		"""Return whether a reading is in flight.
 
@@ -216,6 +286,27 @@ class WidgetCore:
 		tokens = credentials.load(self._provider.key)
 		return (tokens.account if tokens is not None else "", tokens is not None)
 
+	def view(self) -> ProviderView:
+		"""Return everything the panel draws for this service, as it stands now.
+
+		Returns:
+			ProviderView: The state, read once so a redraw sees one moment.
+		"""
+		account, signed_in = self.account()
+		return ProviderView(
+			provider=self._provider,
+			snapshot=self._snapshot,
+			status=self.status_text(),
+			sign_in_message=self._sign_in_message,
+			sign_in_link=self._sign_in_link,
+			refreshing=self._refreshing,
+			signed_in=signed_in,
+			signing_in=self._signing_in,
+			account=account,
+			groups=self.metric_groups(),
+			displayed=frozenset(self.displayed_keys()),
+		)
+
 	def displayed_keys(self) -> tuple[str, ...]:
 		"""Return the selected keys the current reading still reports.
 
@@ -225,44 +316,29 @@ class WidgetCore:
 
 		Returns:
 			tuple of str: The keys to draw a surface for, in selection order.
-			Empty before the first reading, and falling back to the session
-			window when nothing else survives.
+			Empty before the first reading, and empty when none of the chosen
+			usages is reported or none was chosen: the FORL icon is always there
+			to reach the widget from, so no usage has to stand in for it.
 		"""
 		if self._snapshot is None:
 			return ()
 		available = {metric.key for metric in self._snapshot.metrics()}
-		kept = tuple(key for key in self._selected if key in available)
-		return kept or (DEFAULT_METRIC_KEY,)
-
-	def selected_keys(self) -> tuple[str, ...]:
-		"""Return the keys the user chose, whether or not the reading carries them.
-
-		This is what the menu puts its check marks against, so a choice made
-		while a product was reported does not lose its mark the moment that
-		product falls out of the weekly breakdown.
-
-		Returns:
-			tuple of str: The chosen keys, in the order they were chosen.
-		"""
-		return self._selected
+		return tuple(key for key in self._selected if key in available)
 
 	def readings(self) -> tuple[MetricReading, ...]:
 		"""Return one entry per surface the widget should currently show.
 
 		Returns:
 			tuple of MetricReading: The chosen usages with their percentages and
-			hover text, or a single entry carrying no reading when none has
-			arrived yet, which is what keeps one surface on screen to reach the
-			menu from.
+			hover text. Before the first reading, one entry carrying no reading
+			per chosen usage, so the icons are in place when it arrives. Empty
+			when nobody is signed in to this service or no usage is chosen.
 		"""
+		if not self.signed_in:
+			return ()
 		if self._snapshot is None:
-			return (
-				MetricReading(
-					key=DEFAULT_METRIC_KEY,
-					percent=None,
-					tooltip=self._sign_in_message or f"{self._provider.label} usage: {LOADING_TEXT}",
-				),
-			)
+			waiting = self._sign_in_message or f"{self._provider.label} usage: {LOADING_TEXT}"
+			return tuple(MetricReading(key=key, percent=None, tooltip=waiting) for key in self._selected)
 		metrics = {metric.key: metric for metric in self._snapshot.metrics()}
 		return tuple(
 			MetricReading(key=key, percent=metrics[key].percent, tooltip=self.tooltip(key))
@@ -314,41 +390,40 @@ class WidgetCore:
 
 		Returns:
 			str: The sign-in instruction when there is one, otherwise the
-			countdown to the next reading, or "Loading" before the first one.
+			countdown to the next reading, "Loading" before the first one, or
+			"Not signed in" when there is no sign-in to read with.
 		"""
 		if self._sign_in_message:
 			return self._sign_in_message
 		if self._snapshot is None:
-			return LOADING_TEXT
+			return LOADING_TEXT if self.signed_in else NOT_SIGNED_IN_TEXT
 		return format_next_update(self.seconds_to_next_update())
 
-	def menu_rows(self) -> tuple[MenuRow, ...]:
-		"""Return the lines of the menu for the reading on screen.
+	def metric_groups(self) -> tuple[tuple[Metric, ...], ...]:
+		"""Return every usage the reading reports, grouped as the panel groups them.
+
+		This is what the Show section of the settings lists, in the order the
+		panel draws the readings.
 
 		Returns:
-			tuple of MenuRow: One line per usage the account reports, grouped into
-			limits and products, then the settings and the command to quit, each
-			in a section of its own.
+			tuple of tuple of Metric: The limits, then the products, leaving out a
+			group that is empty. Empty before the first reading.
 		"""
-		rows: list[MenuRow] = []
-		if self._snapshot is not None:
-			displayed = frozenset(self.displayed_keys())
-			for group in (LIMIT_GROUP, PRODUCT_GROUP):
-				entries = [metric for metric in self._snapshot.metrics() if metric.group == group]
-				if not entries:
-					continue
-				rows.extend(MenuRow(entry.key, entry.label, entry.key in displayed) for entry in entries)
-				rows.append(MenuRow(SEPARATOR, "", False))
-		rows.append(MenuRow(SETTINGS_KEY, SETTINGS_LABEL, False))
-		rows.append(MenuRow(SEPARATOR, "", False))
-		rows.append(MenuRow(QUIT_KEY, QUIT_LABEL, False))
-		return tuple(rows)
+		if self._snapshot is None:
+			return ()
+		groups = []
+		for group in (LIMIT_GROUP, PRODUCT_GROUP):
+			entries = tuple(metric for metric in self._snapshot.metrics() if metric.group == group)
+			if entries:
+				groups.append(entries)
+		return tuple(groups)
 
 	def toggle_metric(self, key: str) -> None:
 		"""Add a usage to the small surfaces, or take it away.
 
-		The last displayed usage cannot be removed, because doing so would leave
-		no surface to reach the menu from.
+		Every usage can be taken away, the last one included: the FORL icon stays
+		in the notification area whatever is chosen, so the widget can always be
+		reached.
 
 		Args:
 			key: Key of the usage the user clicked. str, non-empty.
@@ -358,8 +433,7 @@ class WidgetCore:
 		"""
 		require_non_empty_str(key, "key")
 		if key in self._selected:
-			if len(self._selected) > 1:
-				self._selected = tuple(other for other in self._selected if other != key)
+			self._selected = tuple(other for other in self._selected if other != key)
 		else:
 			self._selected = self._selected + (key,)
 		self.store(replace(self._preferences, views=self._selected))
@@ -378,23 +452,6 @@ class WidgetCore:
 		self._preferences = preferences
 		save_preferences(self._provider.key, preferences)
 		self._on_change()
-
-	def set_startup(self, enabled: bool) -> bool:
-		"""Store whether this widget starts with the machine, and make it so.
-
-		Args:
-			enabled: What the user set the switch to. bool.
-
-		Returns:
-			bool: True when the system took the change and it was stored. False
-			when the system refused, in which case nothing was stored and the
-			caller should put its switch back.
-		"""
-		require_type(enabled, bool, "enabled")
-		if not set_startup_entry(self._provider.key, enabled):
-			return False
-		self.store(replace(self._preferences, start_on_startup=enabled))
-		return True
 
 	def sign_in_now(self) -> None:
 		"""Sign in through the browser, on a thread of its own.
@@ -442,14 +499,16 @@ class WidgetCore:
 		webbrowser.open(self._sign_in_link)
 
 	def start(self) -> None:
-		"""Start polling, and sign in when there is nothing stored to read with.
+		"""Start polling.
+
+		A service with nothing stored is polled all the same: the reading fails
+		before any request is made, and a sign-in completed later is picked up at
+		the next reading rather than by restarting anything.
 
 		Returns:
 			None.
 		"""
 		self._poller.start()
-		if credentials.load(self._provider.key) is None:
-			self.sign_in_now()
 
 	def stop(self) -> None:
 		"""Stop polling and wait briefly for the worker to finish.
@@ -485,10 +544,10 @@ class WidgetCore:
 		self._refreshing = False
 		# Only a failure the user can act on is kept. Anything else is dropped:
 		# the reading on screen is still the last good one, and how old it is
-		# says the rest. A sign-in the user is in the middle of, or has just
-		# stepped out of, keeps the line: it says more than the reading's
-		# complaint that there is no sign-in to read with.
-		if not self._signing_in and not self._signed_out:
+		# says the rest. A sign-in the user is in the middle of, has just stepped
+		# out of, or has never made, keeps the line: each says more than the
+		# reading's complaint that there is no sign-in to read with.
+		if not self._signing_in and not self._signed_out and self.signed_in:
 			self._sign_in_message = result.error if result.needs_sign_in and result.error else ""
 		if result.ok:
 			self._snapshot = result.snapshot
@@ -496,11 +555,12 @@ class WidgetCore:
 		self._on_change()
 
 	def _prompt_sign_in(self) -> None:
-		"""Put the user in front of the sign-in when a reading says one is needed.
+		"""Put the user in front of the sign-in when a stored one has run out.
 
 		Started once for each spell of being signed out rather than at every
 		reading, so a sign-in left undone does not raise a browser window a
-		minute, and never after the user signed out on purpose.
+		minute. Never after the user signed out on purpose, and never for a
+		service with nothing stored, which the user signs in to from the panel.
 
 		Returns:
 			None.
@@ -508,7 +568,7 @@ class WidgetCore:
 		if not self._sign_in_message:
 			self._sign_in_prompted = False
 			return
-		if self._sign_in_prompted or self._signed_out:
+		if self._sign_in_prompted or self._signed_out or not self.signed_in:
 			return
 		self._sign_in_prompted = True
 		self.sign_in_now()

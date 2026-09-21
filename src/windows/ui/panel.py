@@ -12,12 +12,21 @@ The panel itself appears and disappears at once, with no transition. The bars
 animate, and only when the Windows animation preference allows it, and a line in
 the footer counts down the seconds to the next reading.
 
+One panel serves every service, the way the Mac app's does: a row of tabs at the
+top picks the service, and what is under the tabs belongs to that one. A service
+nobody is signed in to shows the word that starts a sign-in and nothing else.
+
 The same window carries a second view. The gear at the top right of the reading
 leads to the settings, the chevron at the top left of the settings leads back,
 and the two are drawn on the same canvas rather than in two windows, so the
 panel keeps its position and its chrome across the change. The window takes
 whichever of the two views is taller, which is the reading once one has been
-taken, so opening the settings does not resize it.
+taken, so opening the settings does not resize it. The settings are laid out as
+the Mac app's are: what applies to the whole widget, who is signed in to the
+service of the tab, and which of its usages the tray icons show.
+
+Colors follow the light or dark mode chosen for applications in Windows, asked
+again each time the panel opens.
 
 Nothing here is a Tk widget, so anything that can be clicked registers the area
 that reaches it and the canvas looks the pointer up there. Each of those also
@@ -40,21 +49,24 @@ from PIL import Image, ImageTk
 from ..providers import Provider
 from ..render.glyphs import render_back, render_gear
 from ..render.logo import render_logo
+from ..render.shapes import outlined_fill, render_checkbox
 from ..render.theme import (
-	LABEL_PRIMARY,
-	LABEL_SECONDARY,
-	LABEL_TERTIARY,
-	SURFACE_BASE,
+	DARK_PALETTE,
 	SWITCH_OFF_OPACITY,
+	Palette,
 	mix_hex,
+	on_accent,
+	readable_accent,
 	text_style,
 	track_hex,
 	usage_hex,
 )
-from ..usage.snapshot import PRODUCT_KEY_PREFIX, UsageSnapshot
+from ..usage.snapshot import PRODUCT_KEY_PREFIX
 from ..validation import require_member, require_non_empty_str, require_type
 from .animation import Spring, Ticker
 from .capsule_bar import CapsuleBar
+from .core import SIGNED_OUT_TEXT, ProviderView
+from .palette import current_palette
 from .switch import Switch
 from ..system import animations_enabled, apply_panel_chrome, work_area
 from .formatting import format_percent, format_subtitle
@@ -98,14 +110,50 @@ GEAR_KEY = "gear"
 BACK_KEY = "back"
 STARTUP_KEY = "startup"
 ACCOUNT_KEY = "account"
+SIGN_IN_KEY = "sign_in"
 SIGN_IN_LINK_KEY = "sign_in_link"
+# A tab and a Show checkbox each carry what they stand for after the prefix.
+TAB_KEY_PREFIX = "tab:"
+SHOW_KEY_PREFIX = "show:"
 
 SETTINGS_TITLE = "Settings"
+GENERAL_TITLE = "General"
+ACCOUNT_TITLE = "Account"
+SHOW_TITLE = "Show"
 STARTUP_LABEL = "Start at login"
-ACCOUNT_LABEL = "Account"
 SIGN_OUT_LABEL = "Sign out"
 SIGN_IN_LABEL = "Sign in"
+SIGNED_IN_LABEL = "Signed in"
 NOT_SIGNED_IN_LABEL = "Not signed in"
+SIGN_IN_TO_LABEL = "Sign in to {label}"
+SIGNING_IN_LABEL = "Signing in..."
+
+# The row of tabs across the top. The selected tab is tinted with its service's
+# accent, filled lightly and outlined a little more strongly, as on the Mac.
+TAB_HEIGHT = 30
+TAB_GAP = 4
+TAB_RADIUS = 7
+TAB_STROKE = 1
+TAB_MARK_SIZE = 14
+TAB_MARK_GAP = 6
+TAB_FILL_OPACITY = 0.14
+TAB_STROKE_OPACITY = 0.35
+TABS_GAP = 14
+
+# The page shown for a service nobody is signed in to.
+SIGN_IN_PAGE_PAD = 12
+SIGN_IN_BUTTON_HEIGHT = 44
+SIGN_IN_PAGE_GAP = 12
+
+# The settings: a small heading over each group, and the space between groups.
+SECTION_LABEL_GAP = 8
+SETTINGS_SECTION_GAP = 22
+ACCOUNT_MARK_SIZE = 14
+ACCOUNT_MARK_GAP = 8
+SHOW_LABEL_GAP = 10
+SHOW_ROW_HEIGHT = 22
+CHECKBOX_SIZE = 14
+CHECKBOX_GAP = 8
 
 SWITCH_WIDTH = 40
 SWITCH_HEIGHT = 24
@@ -127,11 +175,15 @@ ACTION_HIT_PAD = 5
 # single character, so the file stays in the alphabet the rest of it is in.
 ELLIPSIS = "..."
 
-# The address a sign-in is waiting at, offered while one is under way. It is
-# the one thing drawn in the provider's own color, because it is the one thing
-# on the panel that is neither a reading nor a control but somewhere to go.
-LINK_GAP = 7
+# The address a sign-in is waiting at, offered while one is under way, in the
+# words the Mac app uses. Clicking it also puts the address on the clipboard,
+# because a browser that would not open for the sign-in may not open for the
+# click either.
+LINK_GAP = 12
 LINK_CAPTION_GAP = 5
+LINK_PREFIX = "If the browser doesn't open, "
+LINK_WORDS = "click here"
+LINK_SUFFIX = "."
 LINK_COPIED_TEXT = "Copied. Paste it in a browser if none opened."
 
 SUBTITLE_OFFSET = 17
@@ -166,60 +218,76 @@ class Panel:
 	def __init__(
 		self,
 		master: tk.Tk,
-		provider: Provider,
-		status_text: Callable[[], str],
+		providers: tuple[Provider, ...],
+		describe: Callable[[str], ProviderView],
 		on_startup_change: Callable[[bool], None],
-		on_sign_in: Callable[[], None],
-		on_sign_out: Callable[[], None],
-		on_open_sign_in: Callable[[], None],
+		on_sign_in: Callable[[str], None],
+		on_sign_out: Callable[[str], None],
+		on_open_sign_in: Callable[[str], None],
+		on_toggle_metric: Callable[[str, str], None],
 	) -> None:
 		"""Create the panel as a hidden child of the application root window.
 
 		Args:
 			master: The application root window. tkinter.Tk.
-			provider: The service being reported on, which names and colors the
-				panel. Provider.
-			status_text: Returns the line under the reading, which is either the
-				sign-in instruction or the countdown to the next reading. Asked
-				again every second while the panel is open, because the countdown
-				changes without a new reading arriving. Callable taking no
-				arguments and returning str.
+			providers: Every service, in the order their tabs appear. The first
+				is the tab the panel opens on until another is chosen. tuple of
+				Provider, non-empty.
+			describe: Returns everything the panel draws for one service, given
+				its key. Asked at every redraw and once a second while the panel
+				is open, because the countdown changes without a new reading
+				arriving. Callable taking one str and returning ProviderView.
 			on_startup_change: Called with the new value whenever the user works
-				the start on startup switch. The panel shows the switch and does
+				the start at login switch. The panel shows the switch and does
 				not store or act on it. Callable taking one bool and returning
 				None.
-			on_sign_in: Called when the user asks to sign in. Runs the browser
-				sign-in, which takes as long as the user does, so it belongs
-				somewhere other than the thread this panel is drawn on. Callable
-				taking no arguments and returning None.
-			on_sign_out: Called when the user asks to sign out, which is also how
-				they move the widget to another subscription. Callable taking no
-				arguments and returning None.
-			on_open_sign_in: Called when the user clicks the sign-in address. The
-				panel puts it on the clipboard itself and leaves opening it to
-				the owner. Callable taking no arguments and returning None.
+			on_sign_in: Called with a service's key when the user asks to sign
+				in to it. Runs the browser sign-in, which takes as long as the
+				user does, so it belongs somewhere other than the thread this
+				panel is drawn on. Callable taking one str and returning None.
+			on_sign_out: Called with a service's key when the user asks to sign
+				out of it, which is also how they move the widget to another
+				subscription. Callable taking one str and returning None.
+			on_open_sign_in: Called with a service's key when the user clicks the
+				address its sign-in is waiting at. The panel puts the address on
+				the clipboard itself and leaves opening it to the owner. Callable
+				taking one str and returning None.
+			on_toggle_metric: Called with a service's key and a usage's key when
+				the user ticks or unticks that usage in the Show section. Callable
+				taking two str and returning None.
 
 		Returns:
 			None.
 		"""
 		require_type(master, tk.Tk, "master")
-		require_type(provider, Provider, "provider")
+		require_type(providers, tuple, "providers")
+		if not providers:
+			raise ValueError("providers must not be empty")
+		for provider in providers:
+			require_type(provider, Provider, "providers")
 		for name, callback in (
-			("status_text", status_text),
+			("describe", describe),
 			("on_startup_change", on_startup_change),
 			("on_sign_in", on_sign_in),
 			("on_sign_out", on_sign_out),
 			("on_open_sign_in", on_open_sign_in),
+			("on_toggle_metric", on_toggle_metric),
 		):
 			if not callable(callback):
 				raise TypeError(f"{name} must be callable")
 
-		self._provider = provider
-		self._status_text = status_text
+		self._providers = providers
+		self._keys = frozenset(provider.key for provider in providers)
+		self._describe = describe
 		self._on_startup_change = on_startup_change
 		self._on_sign_in = on_sign_in
 		self._on_sign_out = on_sign_out
 		self._on_open_sign_in = on_open_sign_in
+		self._on_toggle_metric = on_toggle_metric
+		self._selected_key = providers[0].key
+		self._current = describe(self._selected_key)
+		self._palette: Palette = DARK_PALETTE
+		self._accent = readable_accent(self._current.provider.accent, self._palette)
 		self._visible = False
 		self._view = USAGE_VIEW
 		self._start_on_startup = True
@@ -228,13 +296,7 @@ class Panel:
 		self._control_photos: list[ImageTk.PhotoImage] = []
 		self._hovered = ""
 		self._switch: Switch | None = None
-		self._account = ""
-		self._signed_in = False
-		self._sign_in_link = ""
 		self._link_caption_item = 0
-		self._snapshot: UsageSnapshot | None = None
-		self._sign_in_message = ""
-		self._refreshing = False
 		self._bars: list[tuple[CapsuleBar, Spring]] = []
 		self._springs: dict[str, Spring] = {}
 		self._content_height = 0
@@ -242,28 +304,27 @@ class Panel:
 		self._status_item = 0
 		self._spinner_item = 0
 		self._status_job: str | None = None
-		self._logo_photo: ImageTk.PhotoImage | None = None
 		self._fonts: dict[tuple[str, int, str], tkfont.Font] = {}
 		self._ascents: dict[tuple[str, int, str], int] = {}
 		self._spinner_angle = 90.0
 		self._scale = 1.0
-		self._usage_height = 0
+		# The height of each service's reading, which is what the window keeps
+		# while its settings are open.
+		self._usage_heights: dict[str, float] = {}
 		self._hidden_at = 0.0
 
 		self._window = tk.Toplevel(master)
 		self._window.withdraw()
-		self._window.title(f"{provider.label} usage")
+		self._window.title("FORL")
 		self._window.overrideredirect(True)
 		self._window.attributes("-topmost", True)
 		self._window.resizable(False, False)
-		self._window.configure(background=SURFACE_BASE)
 		self._window.bind("<Escape>", lambda _event: self.hide())
 		self._window.bind("<FocusOut>", lambda _event: self.hide())
 		self._window.bind("<MouseWheel>", self._on_mouse_wheel)
 
 		self._canvas = tk.Canvas(
 			self._window,
-			background=SURFACE_BASE,
 			highlightthickness=0,
 			borderwidth=0,
 		)
@@ -272,8 +333,18 @@ class Panel:
 		self._canvas.bind("<Button-1>", self._on_click)
 		self._canvas.bind("<Motion>", self._on_motion)
 		self._canvas.bind("<Leave>", self._on_leave)
+		self._apply_palette()
 
 		self._ticker = Ticker(self._window, self._on_frame)
+
+	def _apply_palette(self) -> None:
+		"""Paint the window and the canvas in the surface of the palette in force.
+
+		Returns:
+			None.
+		"""
+		self._window.configure(background=self._palette.surface)
+		self._canvas.configure(background=self._palette.surface)
 
 	def _unit(self, value: float) -> float:
 		"""Return a layout distance converted from layout units to device pixels.
@@ -344,12 +415,13 @@ class Panel:
 			None.
 		"""
 		require_non_empty_str(key, "key")
-		spring = self._springs.get(key)
+		scoped = f"{self._selected_key}:{key}"
+		spring = self._springs.get(scoped)
 		if spring is None:
 			spring = Spring(0.0, response=BAR_RESPONSE, damping=1.0)
-			self._springs[key] = spring
+			self._springs[scoped] = spring
 		spring.set_target(fraction)
-		bar = CapsuleBar(self._canvas, box, track_hex(percent), usage_hex(percent), "content")
+		bar = CapsuleBar(self._canvas, box, track_hex(percent, self._palette.surface), usage_hex(percent), "content")
 		bar.set_fraction(min(1.0, max(0.0, spring.value)))
 		self._bars.append((bar, spring))
 
@@ -381,14 +453,14 @@ class Panel:
 		"""
 		pad = self._unit(PANEL_PAD)
 		right = self._unit(PANEL_WIDTH) - pad
-		items = [self._text((pad, y), label, "row", LABEL_PRIMARY, width=self._unit(LABEL_COLUMN_WIDTH))]
+		items = [self._text((pad, y), label, "row", self._palette.label_primary, width=self._unit(LABEL_COLUMN_WIDTH))]
 		if subtitle:
 			items.append(
 				self._text(
 					(pad, y + self._unit(SUBTITLE_OFFSET)),
 					subtitle,
 					"caption",
-					LABEL_SECONDARY,
+					self._palette.label_secondary,
 					width=self._unit(LABEL_COLUMN_WIDTH),
 				)
 			)
@@ -407,7 +479,7 @@ class Panel:
 			percent / 100.0,
 			percent,
 		)
-		self._text((right, center), format_percent(percent), "row_value", LABEL_SECONDARY, anchor="e")
+		self._text((right, center), format_percent(percent), "row_value", self._palette.label_secondary, anchor="e")
 		return y + height
 
 	def _draw_section_title(self, title: str, y: float) -> float:
@@ -420,7 +492,7 @@ class Panel:
 		Returns:
 			float: The vertical cursor after the heading.
 		"""
-		self._text((self._unit(PANEL_PAD), y), title, "section", LABEL_PRIMARY)
+		self._text((self._unit(PANEL_PAD), y), title, "section", self._palette.label_primary)
 		return y + self._unit(SECTION_TITLE_GAP)
 
 	def _tick_status(self) -> None:
@@ -436,7 +508,7 @@ class Panel:
 		if not self._visible:
 			return
 		if self._status_item:
-			self._canvas.itemconfigure(self._status_item, text=self._status_text())
+			self._canvas.itemconfigure(self._status_item, text=self._describe(self._selected_key).status)
 		self._status_job = self._window.after(STATUS_INTERVAL_MS, self._tick_status)
 
 	def _draw_footer(self, y: float) -> float:
@@ -456,19 +528,19 @@ class Panel:
 
 		self._status_item = self._text(
 			(pad, y),
-			self._status_text(),
+			self._current.status,
 			"caption",
-			LABEL_SECONDARY,
+			self._palette.label_secondary,
 			width=self._unit(PANEL_WIDTH - 2 * PANEL_PAD),
 		)
 
-		if self._sign_in_link:
+		if self._current.sign_in_link:
 			# The address takes the place of the countdown's trailing space: a
 			# sign-in is in front of the reading, not beside it.
 			self._spinner_item = 0
 			return self._draw_sign_in_link(self._canvas.bbox(self._status_item)[3])
 
-		if self._refreshing:
+		if self._current.refreshing:
 			size = self._unit(SPINNER_SIZE)
 			self._spinner_item = self._canvas.create_arc(
 				right - size,
@@ -478,7 +550,7 @@ class Panel:
 				start=self._spinner_angle,
 				extent=SPINNER_EXTENT,
 				style="arc",
-				outline=self._provider.accent,
+				outline=self._accent,
 				width=max(1.0, self._unit(SPINNER_STROKE)),
 				tags="content",
 			)
@@ -495,11 +567,12 @@ class Panel:
 		Returns:
 			float: The vertical cursor after the last row.
 		"""
-		if self._snapshot is None:
+		snapshot = self._current.snapshot
+		if snapshot is None:
 			return y
 
 		now = datetime.now(timezone.utc)
-		for window in self._snapshot.windows():
+		for window in snapshot.windows():
 			y = self._draw_row(
 				f"limit:{window.key}",
 				window.label,
@@ -510,9 +583,9 @@ class Panel:
 			)
 			y += self._unit(LIMIT_ROW_GAP)
 
-		if self._snapshot.breakdown:
+		if snapshot.breakdown:
 			y = self._draw_section_title(PRODUCT_SECTION_TITLE, y + self._unit(6))
-			for row in self._snapshot.breakdown:
+			for row in snapshot.breakdown:
 				y = self._draw_row(
 					f"{PRODUCT_KEY_PREFIX}{row.key}",
 					row.label,
@@ -523,13 +596,13 @@ class Panel:
 				)
 				y += self._unit(PRODUCT_ROW_GAP)
 
-		if self._snapshot.extra_label and self._snapshot.extra_percent is not None:
-			y = self._draw_section_title(self._snapshot.extra_label, y + self._unit(6))
+		if snapshot.extra_label and snapshot.extra_percent is not None:
+			y = self._draw_section_title(snapshot.extra_label, y + self._unit(6))
 			y = self._draw_row(
 				"extra",
-				self._snapshot.extra_label,
+				snapshot.extra_label,
 				"",
-				self._snapshot.extra_percent,
+				snapshot.extra_percent,
 				y,
 				PRODUCT_ROW_MIN_HEIGHT,
 			)
@@ -622,19 +695,23 @@ class Panel:
 			float: The vertical cursor after the row.
 		"""
 		pad = self._unit(PANEL_PAD)
+		provider = self._current.provider
 		logo_size = max(1, int(round(self._unit(LOGO_SIZE))))
-		self._logo_photo = ImageTk.PhotoImage(
-			render_logo(self._provider.logo_file, logo_size, self._provider.accent)
+		self._canvas.create_image(
+			pad,
+			y + self._unit(2),
+			image=self._mark(provider, logo_size),
+			anchor="nw",
+			tags="content",
 		)
-		self._canvas.create_image(pad, y + self._unit(2), image=self._logo_photo, anchor="nw", tags="content")
 		title = self._text(
 			(pad + logo_size + self._unit(LOGO_TITLE_GAP), y),
-			self._provider.label,
+			provider.label,
 			"title",
-			LABEL_PRIMARY,
+			self._palette.label_primary,
 		)
 
-		if self._snapshot is not None:
+		if self._current.snapshot is not None:
 			# Both runs are anchored by the top of their line box, so sitting the
 			# smaller one lower by the difference in ascent puts the two on one
 			# baseline. Matching the bottoms instead would drop it, because a
@@ -642,9 +719,9 @@ class Panel:
 			title_right = self._canvas.bbox(title)[2]
 			self._text(
 				(title_right + self._unit(PLAN_GAP), y + self._ascent("title") - self._ascent("caption_strong")),
-				self._snapshot.plan,
+				self._current.snapshot.plan,
 				"caption_strong",
-				LABEL_TERTIARY,
+				self._palette.label_tertiary,
 			)
 
 		size = self._control_size()
@@ -744,8 +821,8 @@ class Panel:
 			raise TypeError("render must be callable")
 		require_non_empty_str(key, "key")
 
-		resting = ImageTk.PhotoImage(render(LABEL_SECONDARY))
-		lit = ImageTk.PhotoImage(render(self._provider.accent))
+		resting = ImageTk.PhotoImage(render(self._palette.label_secondary))
+		lit = ImageTk.PhotoImage(render(self._accent))
 		# Kept on the panel because Tk holds only a weak reference to the image
 		# behind a canvas item, and a collected photo leaves a blank space.
 		self._control_photos.extend((resting, lit))
@@ -758,6 +835,38 @@ class Panel:
 			key,
 		)
 
+	def _underline_on_hover(self, item: int, style: str, key: str) -> None:
+		"""Make a run of text underline itself while the pointer is over it.
+
+		Args:
+			item: Canvas item id of the text. int.
+			style: The text style it is set in, such as "row". str.
+			key: The key its area answers to. str, non-empty.
+
+		Returns:
+			None.
+		"""
+		require_non_empty_str(key, "key")
+		plain = text_style(style)
+		underlined = plain + ("underline",)
+		self._lit[key] = lambda on: self._canvas.itemconfigure(item, font=underlined if on else plain)
+
+	def _add_text_hit(self, item: int, key: str) -> tuple[float, float, float, float]:
+		"""Register the area around a run of text as answering to a click.
+
+		Args:
+			item: Canvas item id of the text. int.
+			key: What to report when it is clicked. str, non-empty.
+
+		Returns:
+			tuple of four floats: The text's own box as (left, top, right,
+			bottom), before the reach is added.
+		"""
+		left, top, right, bottom = self._canvas.bbox(item)
+		reach = self._unit(ACTION_HIT_PAD)
+		self._add_hit((left - reach, top - reach, right + reach, bottom + reach), key)
+		return (float(left), float(top), float(right), float(bottom))
+
 	def _draw_action(self, text: str, right: float, middle: float, key: str) -> float:
 		"""Draw a word that answers to a click, and return where it begins.
 
@@ -768,20 +877,30 @@ class Panel:
 			key: What to report when it is clicked. str, non-empty.
 
 		Returns:
-			float: The left edge of the word in device pixels, which is what is
-			left for whatever goes beside it.
+			float: The left edge of the word in device pixels.
 		"""
 		require_non_empty_str(text, "text")
 		require_non_empty_str(key, "key")
 
-		item = self._text((right, middle), text, "row", LABEL_SECONDARY, anchor="e")
-		accent = self._provider.accent
-		self._lit[key] = lambda on: self._canvas.itemconfigure(item, fill=accent if on else LABEL_SECONDARY)
+		item = self._text((right, middle), text, "row", self._accent, anchor="e")
+		self._underline_on_hover(item, "row", key)
+		return self._add_text_hit(item, key)[0]
 
-		left, top, edge, bottom = self._canvas.bbox(item)
-		reach = self._unit(ACTION_HIT_PAD)
-		self._add_hit((left - reach, top - reach, edge + reach, bottom + reach), key)
-		return float(left)
+	def _mark(self, provider: Provider, size: int) -> ImageTk.PhotoImage:
+		"""Return a service's mark, drawn in its accent as it reads on this palette.
+
+		Args:
+			provider: The service. Provider.
+			size: Edge length in pixels. int, greater than 0.
+
+		Returns:
+			ImageTk.PhotoImage: The mark, kept alive by the panel until the next
+			redraw.
+		"""
+		color = readable_accent(provider.accent, self._palette)
+		photo = ImageTk.PhotoImage(render_logo(provider.logo_file, size, color))
+		self._control_photos.append(photo)
+		return photo
 
 	def _set_hovered(self, key: str) -> None:
 		"""Color whatever the pointer is over, and put back what it left.
@@ -809,12 +928,12 @@ class Panel:
 		"""
 		pad = self._unit(PANEL_PAD)
 		size = self._back_size()
-		chevron = render_back(size, LABEL_SECONDARY)
+		chevron = render_back(size, self._palette.label_secondary)
 		title = self._text(
 			(pad + chevron.width + self._unit(LOGO_TITLE_GAP), y),
 			SETTINGS_TITLE,
 			"title",
-			LABEL_PRIMARY,
+			self._palette.label_primary,
 		)
 		self._draw_control(
 			lambda color: render_back(size, color),
@@ -825,7 +944,11 @@ class Panel:
 		return self._canvas.bbox(title)[3] + self._unit(HEADER_GAP)
 
 	def _draw_settings(self, y: float) -> float:
-		"""Draw every setting: the switch that starts the widget, and the folder.
+		"""Draw every setting, in the groups the Mac app puts them in.
+
+		General holds what applies to the whole widget, Account who is signed in
+		to the service of the tab, and Show which of its usages the tray icons
+		show, once there is a reading to say what those are.
 
 		Args:
 			y: Vertical cursor in device pixels. float.
@@ -833,8 +956,72 @@ class Panel:
 		Returns:
 			float: The vertical cursor after the last setting.
 		"""
-		y = self._draw_startup_row(y) + self._unit(SETTINGS_ROW_GAP)
-		return self._draw_sign_in_link(self._draw_account_row(y))
+		y = self._draw_section_label(GENERAL_TITLE, y, SECTION_LABEL_GAP)
+		y = self._draw_startup_row(y)
+		y = self._draw_section_label(ACCOUNT_TITLE, y + self._unit(SETTINGS_SECTION_GAP), SECTION_LABEL_GAP)
+		y = self._draw_account_row(y)
+		if self._current.groups:
+			y = self._draw_section_label(SHOW_TITLE, y + self._unit(SETTINGS_SECTION_GAP), SHOW_LABEL_GAP)
+			y = self._draw_show_rows(y)
+		return self._draw_sign_in_link(y, centered=False)
+
+	def _draw_section_label(self, title: str, y: float, gap: float) -> float:
+		"""Draw the small heading over a group of settings.
+
+		Args:
+			title: The heading, such as "General". str, non-empty.
+			y: Vertical cursor in device pixels. float.
+			gap: Space under the heading, in layout units. float.
+
+		Returns:
+			float: The vertical cursor where the group starts.
+		"""
+		require_non_empty_str(title, "title")
+		item = self._text((self._unit(PANEL_PAD), y), title, "caption_strong", self._palette.label_secondary)
+		return self._canvas.bbox(item)[3] + self._unit(gap)
+
+	def _draw_show_rows(self, y: float) -> float:
+		"""Draw one checkbox per usage the reading reports.
+
+		A checked usage is one the tray icons show. Every one can be unchecked,
+		because the FORL icon stays in the tray to reach the widget from.
+
+		Args:
+			y: Vertical cursor in device pixels. float.
+
+		Returns:
+			float: The vertical cursor after the last row.
+		"""
+		pad = self._unit(PANEL_PAD)
+		right = self._unit(PANEL_WIDTH) - pad
+		size = max(1, int(round(self._unit(CHECKBOX_SIZE))))
+		height = self._unit(SHOW_ROW_HEIGHT)
+		for group in self._current.groups:
+			for metric in group:
+				checked = metric.key in self._current.displayed
+				box = ImageTk.PhotoImage(
+					render_checkbox(
+						size,
+						checked,
+						self._accent,
+						on_accent(self._accent),
+						self._palette.surface,
+						self._palette.label_tertiary,
+					)
+				)
+				self._control_photos.append(box)
+				middle = y + height / 2.0
+				self._canvas.create_image(pad, middle - size / 2.0, image=box, anchor="nw", tags="content")
+				self._text(
+					(pad + size + self._unit(CHECKBOX_GAP), middle),
+					self._fit(metric.label, "row", right - pad - size - self._unit(CHECKBOX_GAP)),
+					"row",
+					self._palette.label_primary,
+					anchor="w",
+				)
+				self._add_hit((pad, y, right, y + height), f"{SHOW_KEY_PREFIX}{metric.key}")
+				y += height
+		return y
 
 	def _draw_settings_label(self, label: str, y: float, control_height: float) -> tuple[float, float]:
 		"""Draw the name of one setting and return the line its control sits on.
@@ -858,7 +1045,7 @@ class Panel:
 		require_non_empty_str(label, "label")
 		require_type(control_height, (int, float), "control_height")
 
-		name = self._text((self._unit(PANEL_PAD), y), label, "row", LABEL_PRIMARY)
+		name = self._text((self._unit(PANEL_PAD), y), label, "row", self._palette.label_primary)
 		height = max(
 			self._canvas.bbox(name)[3] - y,
 			float(control_height),
@@ -882,13 +1069,12 @@ class Panel:
 		switch_height = self._unit(SWITCH_HEIGHT)
 		middle, height = self._draw_settings_label(STARTUP_LABEL, y, switch_height)
 
-		# On, the switch is the color of the service, which is what marks the
-		# panel as belonging to it.
+		# On, the switch is the color of the service of the tab, as on the Mac.
 		self._switch = Switch(
 			self._canvas,
 			(right - width, middle - switch_height / 2.0, right, middle + switch_height / 2.0),
-			mix_hex(SURFACE_BASE, LABEL_PRIMARY, SWITCH_OFF_OPACITY),
-			self._provider.accent,
+			mix_hex(self._palette.surface, self._palette.label_primary, SWITCH_OFF_OPACITY),
+			self._accent,
 			"content",
 		)
 		self._switch.set_fraction(1.0 if self._start_on_startup else 0.0)
@@ -896,11 +1082,11 @@ class Panel:
 		return y + height
 
 	def _draw_account_row(self, y: float) -> float:
-		"""Draw who is signed in, and the word that changes that.
+		"""Draw the service of the tab, who is signed in to it, and the word that changes that.
 
-		The name is set under the label on a line of its own rather than squeezed
-		between the label and the word, because an email address is as long as it
-		is and the panel is not going to widen for it.
+		The mark and the name of the service on one line with the word at the
+		end of it, and the account on its own line under them, because an email
+		address is as long as it is and the panel is not going to widen for it.
 
 		Args:
 			y: Vertical cursor in device pixels. float.
@@ -910,61 +1096,171 @@ class Panel:
 		"""
 		pad = self._unit(PANEL_PAD)
 		right = self._unit(PANEL_WIDTH) - pad
+		view = self._current
+		size = max(1, int(round(self._unit(ACCOUNT_MARK_SIZE))))
 
-		label = self._text((pad, y), ACCOUNT_LABEL, "row", LABEL_PRIMARY)
-		action = SIGN_OUT_LABEL if self._signed_in else SIGN_IN_LABEL
-		self._draw_action(action, right, self._text_middle(y, "row"), ACCOUNT_KEY)
+		label = self._text((pad + size + self._unit(ACCOUNT_MARK_GAP), y), view.provider.label, "row", self._palette.label_primary)
+		middle = self._text_middle(y, "row")
+		self._canvas.create_image(pad, middle - size / 2.0, image=self._mark(view.provider, size), anchor="nw", tags="content")
+		if not view.signing_in:
+			self._draw_action(SIGN_OUT_LABEL if view.signed_in else SIGN_IN_LABEL, right, middle, ACCOUNT_KEY)
 
-		name = self._account if self._signed_in and self._account else NOT_SIGNED_IN_LABEL
-		room = self._unit(PANEL_WIDTH - 2 * PANEL_PAD)
+		if view.signed_in:
+			name = view.account or SIGNED_IN_LABEL
+		else:
+			name = NOT_SIGNED_IN_LABEL
 		caption = self._text(
 			(pad, self._canvas.bbox(label)[3] + self._unit(SETTINGS_CAPTION_GAP)),
-			self._fit(name, "caption", room),
+			self._fit(name, "caption", right - pad),
 			"caption",
-			LABEL_SECONDARY,
+			self._palette.label_secondary,
 		)
 		return float(self._canvas.bbox(caption)[3])
 
-	def _draw_sign_in_link(self, y: float) -> float:
-		"""Draw the address a sign-in is waiting at, when there is one.
-
-		Drawn in the provider's own color, and underlined under the pointer,
-		which is what marks it as somewhere to go rather than something to read.
-		It is here because a browser that will not open should not be the end of
-		a sign-in: the address is on screen either way.
+	def _draw_tabs(self, y: float) -> float:
+		"""Draw one tab per service across the top, and mark the selected one.
 
 		Args:
 			y: Vertical cursor in device pixels. float.
 
 		Returns:
+			float: The vertical cursor under the tabs.
+		"""
+		pad = self._unit(PANEL_PAD)
+		gap = self._unit(TAB_GAP)
+		height = self._unit(TAB_HEIGHT)
+		count = len(self._providers)
+		width = (self._unit(PANEL_WIDTH) - 2 * pad - gap * (count - 1)) / count
+		mark_size = max(1, int(round(self._unit(TAB_MARK_SIZE))))
+		surface = self._palette.surface
+
+		for index, provider in enumerate(self._providers):
+			left = pad + index * (width + gap)
+			selected = provider.key == self._selected_key
+			accent = readable_accent(provider.accent, self._palette)
+			if selected:
+				plate = ImageTk.PhotoImage(
+					outlined_fill(
+						int(round(width)),
+						int(round(height)),
+						mix_hex(surface, accent, TAB_FILL_OPACITY),
+						mix_hex(surface, accent, TAB_STROKE_OPACITY),
+						self._unit(TAB_RADIUS),
+						self._unit(TAB_STROKE),
+					)
+				)
+				self._control_photos.append(plate)
+				self._canvas.create_image(left, y, image=plate, anchor="nw", tags="content")
+
+			style = "section" if selected else "row"
+			label_width = self._font(style).measure(provider.label)
+			start = left + (width - (mark_size + self._unit(TAB_MARK_GAP) + label_width)) / 2.0
+			middle = y + height / 2.0
+			self._canvas.create_image(
+				start,
+				middle - mark_size / 2.0,
+				image=self._mark(provider, mark_size),
+				anchor="nw",
+				tags="content",
+			)
+			self._text(
+				(start + mark_size + self._unit(TAB_MARK_GAP), middle),
+				provider.label,
+				style,
+				accent if selected else self._palette.label_secondary,
+				anchor="w",
+			)
+			self._add_hit((left, y, left + width, y + height), f"{TAB_KEY_PREFIX}{provider.key}")
+		return y + height + self._unit(TABS_GAP)
+
+	def _draw_sign_in_page(self, y: float) -> float:
+		"""Draw what a service nobody is signed in to shows: the way to sign in.
+
+		The same page the Mac app shows: the word that starts the sign-in, what
+		went wrong with the last attempt if anything did, and the address the
+		sign-in is waiting at while one is under way.
+
+		Args:
+			y: Vertical cursor in device pixels. float.
+
+		Returns:
+			float: The vertical cursor after the page.
+		"""
+		view = self._current
+		pad = self._unit(PANEL_PAD)
+		right = self._unit(PANEL_WIDTH) - pad
+		center = self._unit(PANEL_WIDTH) / 2.0
+		y += self._unit(SIGN_IN_PAGE_PAD)
+
+		height = self._unit(SIGN_IN_BUTTON_HEIGHT)
+		words = SIGNING_IN_LABEL if view.signing_in else SIGN_IN_TO_LABEL.format(label=view.provider.label)
+		button = self._text((center, y + height / 2.0), words, "title", self._accent, anchor="center")
+		if not view.signing_in:
+			self._underline_on_hover(button, "title", SIGN_IN_KEY)
+			self._add_hit((pad, y, right, y + height), SIGN_IN_KEY)
+		y += height
+
+		message = view.sign_in_message
+		if not view.signing_in and message and message != SIGNED_OUT_TEXT:
+			y += self._unit(SIGN_IN_PAGE_GAP)
+			item = self._text(
+				(center, y),
+				message,
+				"caption",
+				self._palette.label_secondary,
+				anchor="n",
+				width=right - pad,
+			)
+			self._canvas.itemconfigure(item, justify="center")
+			y = float(self._canvas.bbox(item)[3])
+
+		return self._draw_sign_in_link(y, centered=True) + self._unit(SIGN_IN_PAGE_PAD)
+
+	def _draw_sign_in_link(self, y: float, centered: bool) -> float:
+		"""Draw the address a sign-in is waiting at, when there is one.
+
+		Written as the Mac app writes it, with the address behind the words
+		"click here" rather than spelled out: an authorization address is far
+		too long to read, and nothing is gained by showing it.
+
+		Args:
+			y: Vertical cursor in device pixels. float.
+			centered: Whether to center the line across the panel, which is how
+				the sign-in page sets it, rather than start it at the margin.
+				bool.
+
+		Returns:
 			float: The vertical cursor after the link, unchanged when there is
 			no address to offer.
 		"""
-		if not self._sign_in_link:
+		require_type(centered, bool, "centered")
+		if not self._current.sign_in_link:
 			return y
 
 		pad = self._unit(PANEL_PAD)
 		room = self._unit(PANEL_WIDTH - 2 * PANEL_PAD)
 		y += self._unit(LINK_GAP)
 
-		item = self._text(
-			(pad, y),
-			self._fit(self._sign_in_link, "caption", room),
+		font = self._font("caption")
+		total = sum(font.measure(part) for part in (LINK_PREFIX, LINK_WORDS, LINK_SUFFIX))
+		x = self._unit(PANEL_WIDTH) / 2.0 - total / 2.0 if centered else pad
+		prefix = self._text((x, y), LINK_PREFIX, "caption", self._palette.label_secondary)
+		x += font.measure(LINK_PREFIX)
+		words = self._text((x, y), LINK_WORDS, "caption", self._accent)
+		x += font.measure(LINK_WORDS)
+		self._text((x, y), LINK_SUFFIX, "caption", self._palette.label_secondary)
+		self._underline_on_hover(words, "caption", SIGN_IN_LINK_KEY)
+		self._add_text_hit(words, SIGN_IN_LINK_KEY)
+
+		y = self._canvas.bbox(prefix)[3] + self._unit(LINK_CAPTION_GAP)
+		self._link_caption_item = self._text(
+			(self._unit(PANEL_WIDTH) / 2.0 if centered else pad, y),
+			"",
 			"caption",
-			self._provider.accent,
+			self._palette.label_secondary,
+			anchor="n" if centered else "nw",
+			width=room,
 		)
-		plain = text_style("caption")
-		underlined = plain + ("underline",)
-		self._lit[SIGN_IN_LINK_KEY] = lambda on: self._canvas.itemconfigure(
-			item, font=underlined if on else plain
-		)
-
-		left, top, right, bottom = self._canvas.bbox(item)
-		reach = self._unit(ACTION_HIT_PAD)
-		self._add_hit((left - reach, top - reach, right + reach, bottom + reach), SIGN_IN_LINK_KEY)
-
-		y = bottom + self._unit(LINK_CAPTION_GAP)
-		self._link_caption_item = self._text((pad, y), "", "caption", LABEL_SECONDARY, width=room)
 		return y + self._unit(SUBTITLE_OFFSET)
 
 	def _open_sign_in_link(self) -> None:
@@ -978,17 +1274,18 @@ class Panel:
 		Returns:
 			None.
 		"""
-		if not self._sign_in_link:
+		address = self._current.sign_in_link
+		if not address:
 			return
 		try:
 			self._window.clipboard_clear()
-			self._window.clipboard_append(self._sign_in_link)
+			self._window.clipboard_append(address)
 		except tk.TclError:
 			# No clipboard to write to, which costs the paste and nothing else.
 			pass
 		if self._link_caption_item:
 			self._canvas.itemconfigure(self._link_caption_item, text=LINK_COPIED_TEXT)
-		self._on_open_sign_in()
+		self._on_open_sign_in(self._selected_key)
 
 	def _rebuild(self) -> None:
 		"""Redraw the whole panel, in whichever view it is showing.
@@ -1009,18 +1306,24 @@ class Panel:
 		self._link_caption_item = 0
 		self._scroll_offset = 0.0
 
+		self._current = self._describe(self._selected_key)
+		self._accent = readable_accent(self._current.provider.accent, self._palette)
 		pad = self._unit(PANEL_PAD)
-		if self._view == SETTINGS_VIEW:
-			# Neither belongs to this view, and both are stepped on every frame
+		y = self._draw_tabs(pad)
+		if not self._current.signed_in or self._view == SETTINGS_VIEW:
+			# Neither belongs to these pages, and both are stepped on every frame
 			# while they are set, so they are cleared rather than left pointing
 			# at items that have just been deleted.
 			self._status_item = 0
 			self._spinner_item = 0
-			self._content_height = self._draw_settings(self._draw_settings_header(pad)) + pad
+		if not self._current.signed_in:
+			self._content_height = self._draw_sign_in_page(y) + pad
+		elif self._view == SETTINGS_VIEW:
+			self._content_height = self._draw_settings(self._draw_settings_header(y)) + pad
 		else:
-			y = self._draw_body(self._draw_header(pad))
+			y = self._draw_body(self._draw_header(y))
 			self._content_height = self._draw_footer(y + self._unit(4)) + pad
-			self._usage_height = self._content_height
+			self._usage_heights[self._selected_key] = self._content_height
 		self._set_hovered(hovered if hovered in self._lit else "")
 
 	def _hit_at(self, x: float, y: float) -> str:
@@ -1050,20 +1353,24 @@ class Panel:
 			None. A click that lands anywhere else does nothing.
 		"""
 		key = self._hit_at(event.x, event.y - self._scroll_offset)
-		if key == GEAR_KEY:
+		if key.startswith(TAB_KEY_PREFIX):
+			self.select(key[len(TAB_KEY_PREFIX):])
+		elif key.startswith(SHOW_KEY_PREFIX):
+			self._on_toggle_metric(self._selected_key, key[len(SHOW_KEY_PREFIX):])
+		elif key == GEAR_KEY:
 			self._set_view(SETTINGS_VIEW)
 		elif key == BACK_KEY:
 			self._set_view(USAGE_VIEW)
 		elif key == STARTUP_KEY:
 			self._toggle_startup()
-		elif key == ACCOUNT_KEY:
+		elif key in (SIGN_IN_KEY, ACCOUNT_KEY):
 			# The panel is left open. A browser that opens takes the focus and
 			# dismisses it anyway, and one that does not leaves the panel in
 			# front of the user with the address to open by hand.
-			if self._signed_in:
-				self._on_sign_out()
+			if key == ACCOUNT_KEY and self._current.signed_in:
+				self._on_sign_out(self._selected_key)
 			else:
-				self._on_sign_in()
+				self._on_sign_in(self._selected_key)
 		elif key == SIGN_IN_LINK_KEY:
 			self._open_sign_in_link()
 
@@ -1184,10 +1491,10 @@ class Panel:
 		self._window.update_idletasks()
 		self._scale = self._window.winfo_fpixels("1i") / 96.0
 		previous_offset = self._scroll_offset
-		if self._view == SETTINGS_VIEW and not self._usage_height:
-			# Opened straight into the settings from the menu, so the reading has
-			# never been drawn and its height is not known yet. Drawing it once
-			# and throwing it away is what gives the window its usual size.
+		if self._view == SETTINGS_VIEW and self._selected_key not in self._usage_heights:
+			# The reading of this service has never been drawn, so its height is
+			# not known yet. Drawing it once and throwing it away is what gives
+			# the window its usual size.
 			self._view = USAGE_VIEW
 			self._rebuild()
 			self._view = SETTINGS_VIEW
@@ -1201,7 +1508,8 @@ class Panel:
 		margin = int(round(self._unit(SCREEN_MARGIN)))
 		# Never shorter than what has just been drawn, so a reading that has not
 		# arrived yet cannot leave the settings cut off below the window.
-		wanted = max(self._usage_height, self._content_height)
+		reading = self._usage_heights.get(self._selected_key, 0.0) if self._current.signed_in else 0.0
+		wanted = max(reading, self._content_height)
 		height = int(round(min(wanted, (bottom - top) - 2 * margin)))
 
 		x = max(left, right - width - margin)
@@ -1210,35 +1518,35 @@ class Panel:
 		self._window.geometry(f"{width}x{height}+{x}+{y}")
 		self._scroll_to(previous_offset, height)
 
-	def update_view(self, snapshot: UsageSnapshot | None, sign_in_message: str, refreshing: bool) -> None:
-		"""Store the latest reading and redraw the panel if it is open.
+	def refresh(self) -> None:
+		"""Redraw the panel from what the owner now reports, if it is open.
 
 		A failed attempt leaves the previous reading in place. Unless it is one
 		the user can fix by signing in, nothing is said about it and the age of
 		what is on screen carries the news.
 
-		Args:
-			snapshot: The most recent successful reading, or None when there has
-				never been one. UsageSnapshot or None.
-			sign_in_message: What the user should run to sign in again, empty when
-				the sign-in is fine. str.
-			refreshing: Whether a reading is in flight, which puts a spinner in
-				the footer. bool.
-
 		Returns:
 			None.
 		"""
-		if snapshot is not None:
-			require_type(snapshot, UsageSnapshot, "snapshot")
-		require_type(sign_in_message, str, "sign_in_message")
-		require_type(refreshing, bool, "refreshing")
-
-		self._snapshot = snapshot
-		self._sign_in_message = sign_in_message
-		self._refreshing = refreshing
 		if self._visible:
 			self._layout()
 			self._start_animating()
+
+	def select(self, provider_key: str) -> None:
+		"""Show the tab of one service.
+
+		Args:
+			provider_key: Key of the service, one of those the panel was built
+				with. str, non-empty.
+
+		Returns:
+			None. Choosing the tab already showing does nothing.
+		"""
+		require_member(provider_key, self._keys, "provider_key")
+		if provider_key == self._selected_key:
+			return
+		self._selected_key = provider_key
+		self.refresh()
 
 	def set_startup(self, enabled: bool) -> None:
 		"""Set which way the start on startup switch is drawn.
@@ -1254,41 +1562,6 @@ class Panel:
 		"""
 		require_type(enabled, bool, "enabled")
 		self._start_on_startup = enabled
-		if self._visible:
-			self._layout()
-
-	def set_account(self, account: str, signed_in: bool) -> None:
-		"""Set who the settings say is signed in.
-
-		Args:
-			account: Who is signed in, as they should be named. Empty when the
-				sign-in reported no name for them. str.
-			signed_in: Whether there is a sign-in at all, which is what decides
-				whether the row offers to sign out or to sign in. bool.
-
-		Returns:
-			None.
-		"""
-		require_type(account, str, "account")
-		require_type(signed_in, bool, "signed_in")
-		self._account = account
-		self._signed_in = signed_in
-		if self._visible and self._view == SETTINGS_VIEW:
-			self._layout()
-
-	def set_sign_in_link(self, address: str) -> None:
-		"""Offer an address to sign in at, or withdraw the offer.
-
-		Args:
-			address: The address, empty when no sign-in is under way. str.
-
-		Returns:
-			None.
-		"""
-		require_type(address, str, "address")
-		if address == self._sign_in_link:
-			return
-		self._sign_in_link = address
 		if self._visible:
 			self._layout()
 
@@ -1312,7 +1585,7 @@ class Panel:
 		frame = self._window.frame()
 		return int(frame, 16) if frame else self._window.winfo_id()
 
-	def show(self, view: str = USAGE_VIEW) -> None:
+	def show(self, view: str = USAGE_VIEW, provider_key: str = "") -> None:
 		"""Present the panel above the notification area and give it focus.
 
 		Args:
@@ -1320,18 +1593,26 @@ class Panel:
 				panel always opens on the view asked for rather than the one it
 				was left in, so dismissing it and clicking an icon comes back to
 				the reading. str.
+			provider_key: Key of the service whose tab to open on, or an empty
+				string to open on the tab last shown. str.
 
 		Returns:
 			None.
 		"""
 		require_member(view, PANEL_VIEWS, "view")
+		require_type(provider_key, str, "provider_key")
+		if provider_key:
+			require_member(provider_key, self._keys, "provider_key")
+			self._selected_key = provider_key
+		self._palette = current_palette()
+		self._apply_palette()
 		self._view = view
 		self._layout()
 		for bar, spring in self._bars:
 			spring.rewind(0.0)
 			bar.set_fraction(0.0)
 		self._window.deiconify()
-		apply_panel_chrome(self._window_handle())
+		apply_panel_chrome(self._window_handle(), self._palette.dark)
 		self._window.lift()
 		self._window.focus_force()
 		self._visible = True

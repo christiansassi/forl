@@ -16,8 +16,8 @@ from ..usage.snapshot import UsageSnapshot
 from ..validation import require_member, require_non_empty_str
 from . import claude, codex
 
-# Named here as well as on the provider records, because the command line is
-# built from them before any provider has been chosen.
+# Named here as well as on the provider records, so a caller can name a service
+# without importing the module that reads it.
 CLAUDE_KEY = claude.KEY
 CHATGPT_KEY = codex.KEY
 
@@ -27,7 +27,7 @@ class Provider:
 	"""One service the widget can report on.
 
 	Attributes:
-		key: Stable identifier used on the command line and in window names. str.
+		key: Stable identifier used in storage, in tray icon names and in the tabs. str.
 		label: Product name shown in the panel title. str.
 		logo_file: Name of the mark inside the assets directory. str.
 		accent: Brand color as a "#rrggbb" string, used for the mark and the
