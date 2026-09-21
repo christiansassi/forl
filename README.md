@@ -41,7 +41,7 @@ The executable is written to `src/windows/dist/FORL.exe`.
 > [!IMPORTANT]
 > Requires macOS 15 or later and Xcode.
 
-1. Open [`src/mac/FORL.xcodeproj`](src/mac/FORL.xcodeproj) in Xcode.
+1. Open `src/mac/FORL.xcodeproj`src/mac/FORL.xcodeproj in Xcode.
 2. For both the `FORL` and `FORLWidgets` targets, select your team under **Signing & Capabilities**.
 3. Build and install the app:
 
