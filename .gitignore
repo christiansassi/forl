@@ -46,6 +46,9 @@ build/
 dist/
 DerivedData/
 
+# The films the tools render. What the README shows is the loop beside them.
+*.mp4
+
 src/windows/tests/
 src/mac/tests/
 src/mac/*Tests/

@@ -22,6 +22,10 @@
 
 # Demo
 
+<p align="center">
+	<img src="assets/demo.gif" width="100%" alt="FORL in the menu bar, the panel, the widgets and Control Center">
+</p>
+
 # Installation
 
 ## Windows
