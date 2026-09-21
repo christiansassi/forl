@@ -77,5 +77,4 @@ pluginkit -r "$built_app/Contents/PlugIns/FORLWidgets.appex" || true
 pluginkit -a "$installed_app/Contents/PlugIns/FORLWidgets.appex"
 # Drop cached extension launch paths without changing widget configurations.
 pkill -u "$(id -u)" -x chronod 2>/dev/null || true
-open "$installed_app"
-printf 'Installed and opened %s\n' "$installed_app"
+printf 'Installed %s\n' "$installed_app"

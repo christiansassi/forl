@@ -1,5 +1,5 @@
 <p align="center">
-	<img src="assets/banner.png" width="100%" alt="">
+	<!-- <img src="assets/banner.png" width="100%" alt=""> -->
     Made with ❤️ (and a lot of
 <img src="assets/claude.svg" alt="Claude" height="16" align="absmiddle">
 &nbsp;
@@ -10,7 +10,43 @@
 )
 </p>
 
+# Table of Contents
+
+- [Introduction](#introduction)
+- [Demo](#demo)
+- [Installation](#installation)
+	- [Windows](#windows)
+	- [macOS](#macos)
+
+# Introduction
+
+# Demo
+
+# Installation
+
+## Windows
+
+> [!IMPORTANT]
+> Requires Python 3.10 or later.
+
 ```bash
-python src/windows/build.py   # Windows
-bash src/mac/build.command    # macOS
+pip install -r src/windows/requirements.txt
+python src/windows/build.py
 ```
+
+The executable is written to `src/windows/dist/FORL.exe`.
+
+## macOS
+
+> [!IMPORTANT]
+> Requires macOS 15 or later and Xcode.
+
+1. Open [`src/mac/FORL.xcodeproj`](src/mac/FORL.xcodeproj) in Xcode.
+2. For both the `FORL` and `FORLWidgets` targets, select your team under **Signing & Capabilities**.
+3. Build and install the app:
+
+	```bash
+	bash src/mac/build.command
+	```
+
+The app is installed to `/Applications/FORL.app`.
