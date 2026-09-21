@@ -1,11 +1,11 @@
 <p align="center">
 	<img src="assets/banner.png" width="100%" alt="">
     Made with ❤️ (and a lot of
-<img src="assets/icons/claude.svg" alt="Claude" height="16" align="absmiddle">
+<img src="assets/claude.svg" alt="Claude" height="16" align="absmiddle">
 &nbsp;
 <picture>
-	<source media="(prefers-color-scheme: dark)" srcset="assets/icons/chatgpt-dark.svg">
-	<img src="assets/icons/chatgpt-light.svg" alt="OpenAI" height="16" align="absmiddle">
+	<source media="(prefers-color-scheme: dark)" srcset="assets/chatgpt-dark.svg">
+	<img src="assets/chatgpt-light.svg" alt="OpenAI" height="16" align="absmiddle">
 </picture>
 )
 </p>
