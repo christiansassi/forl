@@ -10,9 +10,10 @@ core of its own and a set of tray icons of its own, drawn in its color; the pane
 and the menu are shared, and the panel shows one service at a time under a row
 of tabs. A service nobody is signed in to has no icons.
 
-One more icon, in the app's own artwork, is always there. It opens the panel and
-carries the menu that quits the widget, and it is what lets every usage be
-unchecked: the widget can always be reached from it, whatever the tray shows.
+One more icon, in the app's own artwork, stands in whenever no usage icon is
+showing: with nobody signed in, or with every usage unchecked. It opens the panel
+and carries the menu that quits the widget, so the widget can always be reached
+from the tray, and it goes away as soon as a usage icon takes its place.
 
 Tkinter only accepts calls from the thread that created its widgets, while the
 pollers and every tray icon run their own threads. Every cross thread event is
@@ -45,7 +46,7 @@ from .tray import TrayIcons
 
 DRAIN_INTERVAL_MS = 120
 
-# The icon that is always there, drawn from the app's own artwork.
+# The icon shown while no usage icon is, drawn from the app's own artwork.
 APP_ICON_NAME = "forl"
 APP_ICON_KEY = "app"
 APP_ICON_TOOLTIP = "FORL"
@@ -269,8 +270,14 @@ class WidgetApp:
 			None.
 		"""
 		self._panel.refresh()
+		showing = False
 		for key, tray in self._trays.items():
-			tray.sync(self._cores[key].readings())
+			readings = self._cores[key].readings()
+			showing = showing or bool(readings)
+			tray.sync(readings)
+		if showing:
+			self._app_icon.sync(())
+			return
 		anyone = any(core.signed_in for core in self._cores.values())
 		self._app_icon.sync(
 			(MetricReading(APP_ICON_KEY, None, APP_ICON_TOOLTIP if anyone else APP_ICON_SIGNED_OUT_TOOLTIP),)

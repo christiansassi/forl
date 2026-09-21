@@ -984,7 +984,7 @@ class Panel:
 		"""Draw one checkbox per usage the reading reports.
 
 		A checked usage is one the tray icons show. Every one can be unchecked,
-		because the FORL icon stays in the tray to reach the widget from.
+		because the FORL icon appears in the tray once no usage icon is left.
 
 		Args:
 			y: Vertical cursor in device pixels. float.

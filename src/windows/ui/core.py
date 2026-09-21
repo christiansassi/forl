@@ -317,8 +317,8 @@ class WidgetCore:
 		Returns:
 			tuple of str: The keys to draw a surface for, in selection order.
 			Empty before the first reading, and empty when none of the chosen
-			usages is reported or none was chosen: the FORL icon is always there
-			to reach the widget from, so no usage has to stand in for it.
+			usages is reported or none was chosen: the FORL icon then stands in,
+			so no usage has to be kept to reach the widget from.
 		"""
 		if self._snapshot is None:
 			return ()
@@ -421,8 +421,8 @@ class WidgetCore:
 	def toggle_metric(self, key: str) -> None:
 		"""Add a usage to the small surfaces, or take it away.
 
-		Every usage can be taken away, the last one included: the FORL icon stays
-		in the notification area whatever is chosen, so the widget can always be
+		Every usage can be taken away, the last one included: when no usage icon
+		is left, the FORL icon takes their place, so the widget can always be
 		reached.
 
 		Args:
