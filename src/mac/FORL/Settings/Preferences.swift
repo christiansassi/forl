@@ -45,18 +45,23 @@ final class Preferences {
 
 	/// Return the metric keys the user chose for one provider.
 	///
+	/// A provider that has never been configured shows its session window, which
+	/// is the useful thing to show a machine that has just been set up. A
+	/// provider whose last reading has been unticked shows none: that is a
+	/// choice the user made, and it is a different thing from never having made
+	/// one, so the two are stored differently rather than read the same.
+	///
 	/// - Parameter providerKey: Key of the provider, such as "claude".
-	/// - Returns: The chosen keys in the order they were chosen, falling back to
-	///   the session window when nothing has been chosen.
+	/// - Returns: The chosen keys in the order they were chosen, or the session
+	///   window for a provider with no stored choice at all.
 	func selected(for providerKey: String) -> [String] {
-		let chosen = selection[providerKey] ?? []
-		return chosen.isEmpty ? [sessionKey] : chosen
+		StoredSelection.resolve(selection[providerKey])
 	}
 
 	/// Add a metric to one provider's selection, or take it away.
 	///
-	/// The last chosen metric cannot be removed, because doing so would leave no
-	/// surface to reach the menu from.
+	/// Every reading can be unticked. The menu bar keeps an item of the app's own
+	/// while none is shown, so there is still a way back to these settings.
 	///
 	/// - Parameters:
 	///   - key: Key of the metric the user clicked.
@@ -65,9 +70,6 @@ final class Preferences {
 	func toggle(_ key: String, for providerKey: String) {
 		var chosen = selected(for: providerKey)
 		if let index = chosen.firstIndex(of: key) {
-			guard chosen.count > 1 else {
-				return
-			}
 			chosen.remove(at: index)
 		} else {
 			chosen.append(key)
@@ -76,23 +78,22 @@ final class Preferences {
 	}
 }
 
-/// The selection, read without the app around it.
+/// What a stored selection means, in one place.
 ///
-/// A widget extension draws on whatever thread WidgetKit hands it and has no
-/// main actor to wait for, so what it reads is read here rather than through
-/// the observable object the app edits.
+/// The app reads it through its observable preferences and anything without the
+/// app around it reads the defaults directly, so the rule that turns what was
+/// stored into what to show lives here rather than in each of them.
 enum StoredSelection {
-	/// Return the metric keys the user chose for one provider.
+	/// Return what one provider's stored choice means.
 	///
-	/// - Parameters:
-	///   - providerKey: Key of the provider, such as "claude".
-	///   - defaults: Where to read from.
-	/// - Returns: The chosen keys in the order they were chosen, falling back to
-	///   the session window when nothing has been chosen.
-	static func keys(for providerKey: String, defaults: UserDefaults = .shared) -> [String] {
-		let stored = defaults.object(forKey: "selection") as? [String: [String]] ?? [:]
-		let chosen = stored[providerKey] ?? []
-		return chosen.isEmpty ? [sessionKey] : chosen
+	/// No entry at all is a provider nobody has configured, which shows its
+	/// session window. An entry that is empty is a provider whose readings have
+	/// all been unticked, which shows none.
+	///
+	/// - Parameter stored: What was stored for that provider, or nil for none.
+	/// - Returns: The metric keys to show.
+	static func resolve(_ stored: [String]?) -> [String] {
+		stored ?? [sessionKey]
 	}
 }
 

@@ -94,7 +94,12 @@ struct ClaudeProvider: Provider {
 	///   cannot be reached.
 	func read() async throws -> UsageSnapshot {
 		var tokens = try await OAuth.usable(client: oauth)
-		let profile = await self.profile(token: tokens.accessToken)
+		// Both requests carry the same token and neither needs the other's
+		// answer, so they go out together: asking for the plan first put a
+		// second round trip in front of every reading.
+		async let profileAnswer = self.profile(token: tokens.accessToken)
+		async let usageAnswer = HTTP.fetchJSON(url: Self.usageURL, headers: Self.headers(token: tokens.accessToken))
+		let profile = await profileAnswer
 		var plan = tokens.plan.isEmpty ? Self.unknownPlan : tokens.plan
 
 		if !profile.isEmpty {
@@ -111,8 +116,7 @@ struct ClaudeProvider: Provider {
 			plan = fresh
 		}
 
-		let document = try await HTTP.fetchJSON(url: Self.usageURL, headers: Self.headers(token: tokens.accessToken))
-		return Self.parse(document, plan: plan)
+		return Self.parse(try await usageAnswer, plan: plan)
 	}
 
 	/// Return the headers every authenticated Claude request carries.

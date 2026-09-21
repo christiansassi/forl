@@ -23,8 +23,32 @@ private let tankInset: CGFloat = 4
 private let markSize: CGFloat = 13
 private let markGap: CGFloat = 4
 
+/// How much of the bar's height the app's own icon takes, leaving it clear of
+/// the top and bottom the way a mark is.
+private let appIconSize: CGFloat = 16
+
 /// The image a menu bar item carries.
 enum MenuBarIcon {
+	/// Return the app's own icon, at the size the bar draws an item at.
+	///
+	/// Drawn in its own colors rather than as a template: it is the app's icon,
+	/// the same one in the Finder and the Dock, and the item that carries it
+	/// stands for the app rather than for a reading.
+	///
+	/// - Returns: The icon, or nil on a build with none in its catalog.
+	static func appIcon() -> NSImage? {
+		guard let source = NSImage(named: "AppIcon") ?? NSApp.applicationIconImage else {
+			return nil
+		}
+		let height = NSStatusBar.system.thickness
+		let image = NSImage(size: NSSize(width: appIconSize, height: height), flipped: false) { _ in
+			source.draw(in: NSRect(x: 0, y: (height - appIconSize) / 2, width: appIconSize, height: appIconSize))
+			return true
+		}
+		image.isTemplate = false
+		return image
+	}
+
 	/// Return the tank, with the service's mark ahead of it when asked for.
 	///
 	/// - Parameters:

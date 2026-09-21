@@ -506,6 +506,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = FORL/Resources/FORL.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = 66YH3B9VCL;
 				INFOPLIST_FILE = FORL/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -513,6 +514,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = io.forl.app;
 				PRODUCT_NAME = FORL;
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
 				SDKROOT = macosx;
 			};
 			name = Debug;
@@ -661,6 +663,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = FORLWidgets/FORLWidgets.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = 66YH3B9VCL;
 				INFOPLIST_FILE = FORLWidgets/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -680,6 +683,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = FORL/Resources/FORL.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = 66YH3B9VCL;
 				INFOPLIST_FILE = FORL/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -687,6 +691,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = io.forl.app;
 				PRODUCT_NAME = FORL;
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
 				SDKROOT = macosx;
 			};
 			name = Release;
@@ -696,6 +701,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = FORLWidgets/FORLWidgets.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = 66YH3B9VCL;
 				INFOPLIST_FILE = FORLWidgets/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

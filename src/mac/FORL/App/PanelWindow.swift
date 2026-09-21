@@ -70,6 +70,7 @@ final class PanelController {
 	private var anchorObservers: [NSObjectProtocol] = []
 	private var keyObserver: NSObjectProtocol?
 	private var hiddenAt: Date = .distantPast
+	private var anchorFrame: NSRect?
 
 	/// Build the panel hidden, around the view it draws.
 	///
@@ -153,6 +154,9 @@ final class PanelController {
 	/// - Parameter anchor: The view to open under, or nil.
 	/// - Returns: Nothing.
 	func show(under anchor: NSView?) {
+		if anchor !== self.anchor {
+			anchorFrame = nil
+		}
 		self.anchor = anchor
 		hiddenAt = .distantPast
 		observeAnchor()
@@ -215,11 +219,13 @@ final class PanelController {
 		guard let screen = anchor?.window?.screen ?? NSScreen.main ?? window.screen else {
 			return
 		}
-		var anchorFrame: NSRect?
 		if let anchor, let anchorWindow = anchor.window {
 			let box = anchorWindow.convertToScreen(anchor.convert(anchor.bounds, to: nil))
-			// Status items can briefly report a zero-origin frame during launch.
-			// Use the screen corner until macOS supplies the actual menu bar frame.
+			// Status items can briefly report a zero-origin frame, during launch
+			// and while the bar is laying itself out again. The last frame the
+			// item was actually at is kept and used through those moments: the
+			// alternative is the corner of the screen, and a panel that is open
+			// jumps to the far right for as long as the item is unreadable.
 			if !box.isEmpty, box.intersects(screen.frame), box.maxY >= screen.visibleFrame.maxY {
 				anchorFrame = box
 			}

@@ -46,10 +46,16 @@ final class ProviderState: Identifiable {
 
 	/// Build the state of one provider and read who is signed in to it.
 	///
+	/// The last reading the app published is taken back out of the shared
+	/// container, so a surface has a number to draw the moment it appears rather
+	/// than the outline of one until the first poll of this run comes back. The
+	/// reading is replaced as soon as it does.
+	///
 	/// - Parameter provider: The service this is the state of.
 	/// - Returns: Nothing.
 	init(provider: any Provider) {
 		self.provider = provider
+		snapshot = SharedStore.load().reading(for: provider.key)?.snapshot
 		refreshAccount()
 	}
 
@@ -60,16 +66,16 @@ final class ProviderState: Identifiable {
 	/// the reading actually carries.
 	///
 	/// - Parameter preferences: Where the selection is stored.
-	/// - Returns: The metrics to draw a surface for, in selection order, and the
-	///   session window when nothing else survives.
+	/// - Returns: The metrics to draw a surface for, in selection order, which
+	///   is empty when the user has unticked them all.
 	func displayed(_ preferences: Preferences) -> [Metric] {
 		guard let snapshot else {
 			return []
 		}
 		let available = snapshot.metrics
-		let chosen = preferences.selected(for: provider.key)
-		let kept = chosen.compactMap { key in available.first { $0.key == key } }
-		return kept.isEmpty ? [available[0]] : kept
+		return preferences.selected(for: provider.key).compactMap { key in
+			available.first { $0.key == key }
+		}
 	}
 
 	/// Return the hover text for one metric.

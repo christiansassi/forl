@@ -14,6 +14,30 @@ import os
 
 private let log = Logger(subsystem: "io.forl.app", category: "settings")
 
+/// The chevron that leaves the settings.
+private struct BackButton: View {
+	/// The color the chevron takes while the pointer is over it.
+	var accent: Color
+	/// Called when the chevron is clicked.
+	var action: () -> Void
+	/// Whether the pointer is over the chevron.
+	@State private var hovering = false
+
+	var body: some View {
+		Button(action: action) {
+			Image(systemName: "chevron.backward")
+				.font(.system(size: 12))
+				.frame(width: 16, height: 28, alignment: .leading)
+				.contentShape(Rectangle())
+		}
+		.buttonStyle(.plain)
+		.foregroundStyle(hovering ? AnyShapeStyle(accent) : AnyShapeStyle(.secondary))
+		.onHover { hovering = $0 }
+		.help("Back")
+		.accessibilityLabel("Back to usage")
+	}
+}
+
 /// The settings page.
 struct SettingsView: View {
 	/// Everything the app is showing.
@@ -25,15 +49,7 @@ struct SettingsView: View {
 	var body: some View {
 		VStack(alignment: .leading, spacing: 0) {
 			HStack(spacing: 8) {
-				Button(action: onBack) {
-					Image(systemName: "chevron.backward")
-						.font(.system(size: 12))
-						.frame(width: 16, height: 28, alignment: .leading)
-						.contentShape(Rectangle())
-				}
-				.buttonStyle(.plain)
-				.help("Back")
-				.accessibilityLabel("Back to usage")
+				BackButton(accent: store.state(for: selectedProviderKey)?.provider.accent ?? .accentColor, action: onBack)
 				Text("Settings")
 					.font(.system(size: 13, weight: .semibold))
 				Spacer()

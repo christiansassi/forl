@@ -41,20 +41,6 @@ private struct Appearance: Equatable {
 	var title: String
 	/// What the item says on hover.
 	var tooltip: String
-	/// The readings the item's menu offers.
-	var menu: [MenuEntry]
-}
-
-/// One line of the menu an item opens.
-private struct MenuEntry: Equatable {
-	/// What the line says.
-	var label: String
-	/// The provider and metric the line stands for.
-	var identifier: String
-	/// Whether the reading is one of those shown in the bar.
-	var chosen: Bool
-	/// Whether a separator follows the line.
-	var endsGroup: Bool
 }
 
 /// The set of menu bar items, kept in step with what the user chose.
@@ -67,10 +53,10 @@ final class MenuBarController {
 
 	/// The items on screen, keyed by provider and metric.
 	private var items: [String: NSStatusItem] = [:]
-	/// The menu each item opens, rebuilt whenever a reading arrives.
-	private var menus: [String: NSMenu] = [:]
 	/// What each item was last dressed with, keyed the same way.
 	private var dressed: [String: Appearance] = [:]
+	/// The menu every item opens, built once.
+	private lazy var menu: NSMenu = buildMenu()
 
 	/// Build the controller with no items showing yet.
 	///
@@ -89,19 +75,16 @@ final class MenuBarController {
 	func sync() {
 		var wanted: [String] = []
 		for state in store.active {
-			let metrics = state.displayed(store.preferences)
-			for metric in metrics {
+			for metric in state.displayed(store.preferences) {
 				let identifier = "\(state.provider.key)/\(metric.key)"
 				wanted.append(identifier)
 				dress(identifier: identifier, state: state, metric: metric)
 			}
-			if metrics.isEmpty {
-				let identifier = "\(state.provider.key)/"
-				wanted.append(identifier)
-				dress(identifier: identifier, state: state, metric: nil)
-			}
 		}
 
+		// Nothing ticked, or nobody signed in: the app keeps one item of its own
+		// rather than leaving the bar, which is the only way back to the panel
+		// and so to the settings that put the readings back.
 		if wanted.isEmpty {
 			wanted.append(emptyIdentifier)
 			dressEmpty()
@@ -132,34 +115,17 @@ final class MenuBarController {
 	///
 	/// - Returns: Nothing.
 	private func dressEmpty() {
-		let appearance = Appearance(percent: nil, symbolName: "", accent: .primary, title: "", tooltip: "FORL: not signed in", menu: [])
+		let appearance = Appearance(percent: nil, symbolName: "", accent: .primary, title: "", tooltip: "FORL")
 		let item = items[emptyIdentifier] ?? create(identifier: emptyIdentifier)
 		guard let button = item.button, dressed[emptyIdentifier] != appearance else {
 			return
 		}
-		button.image = NSImage(
-			systemSymbolName: "gauge.with.dots.needle.bottom.50percent",
-			accessibilityDescription: "FORL"
-		)
+		button.image = MenuBarIcon.appIcon()
+		button.image?.accessibilityDescription = "FORL"
 		button.imagePosition = .imageOnly
 		button.attributedTitle = NSAttributedString(string: "")
 		button.toolTip = appearance.tooltip
-		menus[emptyIdentifier] = emptyMenu()
 		dressed[emptyIdentifier] = appearance
-	}
-
-	/// Return the menu that item opens.
-	///
-	/// - Returns: A menu with nothing to choose between and a way out, which is
-	///   all there is to offer before anyone has signed in.
-	private func emptyMenu() -> NSMenu {
-		let menu = NSMenu()
-		menu.autoenablesItems = false
-		let quit = NSMenuItem(title: "Quit FORL", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-		quit.target = NSApp
-		quit.isEnabled = true
-		menu.addItem(quit)
-		return menu
 	}
 
 	/// Put one reading on one item, creating the item when it is new.
@@ -175,8 +141,7 @@ final class MenuBarController {
 			symbolName: state.provider.symbolName,
 			accent: state.provider.accent,
 			title: titleLead + (metric.map { Formatting.percent($0.percent) } ?? "-"),
-			tooltip: metric.map { state.tooltip(for: $0) } ?? state.statusText(interval: pollInterval),
-			menu: menuEntries(for: state)
+			tooltip: metric.map { state.tooltip(for: $0) } ?? state.statusText(interval: pollInterval)
 		)
 		let item = items[identifier] ?? create(identifier: identifier)
 		guard let button = item.button, dressed[identifier] != appearance else {
@@ -197,7 +162,6 @@ final class MenuBarController {
 			]
 		)
 		button.toolTip = appearance.tooltip
-		menus[identifier] = buildMenu(from: appearance.menu)
 		dressed[identifier] = appearance
 	}
 
@@ -228,56 +192,21 @@ final class MenuBarController {
 		if let item = items.removeValue(forKey: identifier) {
 			NSStatusBar.system.removeStatusItem(item)
 		}
-		menus.removeValue(forKey: identifier)
 		dressed.removeValue(forKey: identifier)
 	}
 
-	/// Return what one service's menu says.
+	/// Return the menu every item opens.
 	///
-	/// - Parameter state: The provider the menu belongs to.
-	/// - Returns: One line per usage the service reports, grouped as the panel groups them.
-	private func menuEntries(for state: ProviderState) -> [MenuEntry] {
-		let chosen = Set(store.preferences.selected(for: state.provider.key))
-		var entries: [MenuEntry] = []
-		for group in [MetricGroup.limit, .product] {
-			let metrics = state.snapshot?.metrics.filter { $0.group == group } ?? []
-			guard !metrics.isEmpty else {
-				continue
-			}
-			for metric in metrics {
-				entries.append(MenuEntry(
-					label: metric.label,
-					identifier: "\(state.provider.key)/\(metric.key)",
-					chosen: chosen.contains(metric.key),
-					endsGroup: metric.id == metrics.last?.id
-				))
-			}
-		}
-		return entries
-	}
-
-	/// Return the menu those lines make.
+	/// A right click offers the way out of the app and nothing else. Which
+	/// readings the bar shows is chosen in the settings, beside everything else
+	/// the user chooses, rather than in a menu that would say it a second time.
 	///
-	/// - Parameter entries: The readings the menu offers, in the order shown.
-	/// - Returns: The menu, ending in the way out of the app.
-	private func buildMenu(from entries: [MenuEntry]) -> NSMenu {
+	/// - Returns: The menu, which never changes.
+	private func buildMenu() -> NSMenu {
 		let menu = NSMenu()
 		// The app is not the active one, so its menu would otherwise be asked to
 		// validate its items against somebody else's responder chain.
 		menu.autoenablesItems = false
-
-		for entry in entries {
-			let item = NSMenuItem(title: entry.label, action: #selector(chose(_:)), keyEquivalent: "")
-			item.target = self
-			item.representedObject = entry.identifier
-			item.state = entry.chosen ? .on : .off
-			item.isEnabled = true
-			menu.addItem(item)
-			if entry.endsGroup {
-				menu.addItem(.separator())
-			}
-		}
-
 		let quit = NSMenuItem(title: "Quit FORL", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 		quit.target = NSApp
 		quit.isEnabled = true
@@ -311,30 +240,6 @@ final class MenuBarController {
 			onActivate(sender)
 			return
 		}
-		guard
-			let identifier = sender.identifier?.rawValue,
-			let menu = menus[identifier]
-		else {
-			return
-		}
 		menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height), in: sender)
-	}
-
-	/// Add the usage the user picked to the menu bar, or take it away.
-	///
-	/// - Parameter sender: The menu item that was picked.
-	/// - Returns: Nothing.
-	@objc private func chose(_ sender: NSMenuItem) {
-		guard
-			let identifier = sender.representedObject as? String,
-			let slash = identifier.firstIndex(of: "/")
-		else {
-			return
-		}
-		let providerKey = String(identifier[identifier.startIndex..<slash])
-		let metricKey = String(identifier[identifier.index(after: slash)...])
-		store.preferences.toggle(metricKey, for: providerKey)
-		store.publish()
-		sync()
 	}
 }

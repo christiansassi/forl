@@ -69,19 +69,16 @@ struct UsageEntry: TimelineEntry {
 
 /// Reads the shared container for every widget in this bundle.
 struct UsageProvider: AppIntentTimelineProvider {
-	/// Return what to draw before any reading has been read.
+	/// Return what to draw before the timeline has been built.
+	///
+	/// The last reading the app published, not an invented one: WidgetKit shows
+	/// this while it asks for the timeline, and a number that was never true
+	/// would appear for that moment every time the widget is reconfigured.
 	///
 	/// - Parameter context: The widget's context, which this ignores.
-	/// - Returns: A placeholder entry.
+	/// - Returns: The entry standing in for the one being built.
 	func placeholder(in context: Context) -> UsageEntry {
-		UsageEntry(
-			date: Date(),
-			providerKey: "claude",
-			label: "Claude",
-			symbolName: "ClaudeMark",
-			metric: Metric(key: sessionKey, label: sessionLabel, percent: 34, resetsAt: nil, group: .limit),
-			message: ""
-		)
+		UsageEntry.current(serviceKey: nil, metricID: nil)
 	}
 
 	/// Return what to draw in the widget gallery.
