@@ -1,5 +1,6 @@
 <p align="center">
-	<!-- <img src="assets/banner.png" width="100%" alt=""> -->
+	<img src="assets/banner.png" width="100%" alt="">
+	<br><br>
     Made with ❤️ (and a lot of
 <img src="assets/claude.svg" alt="Claude" height="16" align="absmiddle">
 &nbsp;
@@ -8,6 +9,7 @@
 	<img src="assets/chatgpt-light.svg" alt="OpenAI" height="16" align="absmiddle">
 </picture>
 )
+<br>
 </p>
 
 # Table of Contents
@@ -19,6 +21,11 @@
 	- [macOS](#macos)
 
 # Introduction
+
+This tool helps you keep track of your usage and stay within your limits. It currently supports:
+
+- ChatGPT
+- Claude
 
 # Demo
 
