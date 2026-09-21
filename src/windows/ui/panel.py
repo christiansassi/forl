@@ -65,7 +65,7 @@ from ..usage.snapshot import PRODUCT_KEY_PREFIX
 from ..validation import require_member, require_non_empty_str, require_type
 from .animation import Spring, Ticker
 from .capsule_bar import CapsuleBar
-from .core import SIGNED_OUT_TEXT, ProviderView
+from .core import ProviderView
 from .palette import current_palette
 from .switch import Switch
 from ..system import animations_enabled, apply_panel_chrome, work_area
@@ -143,7 +143,6 @@ TABS_GAP = 14
 # The page shown for a service nobody is signed in to.
 SIGN_IN_PAGE_PAD = 12
 SIGN_IN_BUTTON_HEIGHT = 44
-SIGN_IN_PAGE_GAP = 12
 
 # The settings: a small heading over each group, and the space between groups.
 SECTION_LABEL_GAP = 8
@@ -1176,9 +1175,11 @@ class Panel:
 	def _draw_sign_in_page(self, y: float) -> float:
 		"""Draw what a service nobody is signed in to shows: the way to sign in.
 
-		The same page the Mac app shows: the word that starts the sign-in, what
-		went wrong with the last attempt if anything did, and the address the
-		sign-in is waiting at while one is under way.
+		The same page the Mac app shows: the word that starts the sign-in, and
+		the address the sign-in is waiting at while one is under way. A sign-in
+		that failed or was abandoned leaves the page as it was before it
+		started, with nothing said about it, so trying again is the one thing
+		on offer.
 
 		Args:
 			y: Vertical cursor in device pixels. float.
@@ -1199,21 +1200,6 @@ class Panel:
 			self._underline_on_hover(button, "title", SIGN_IN_KEY)
 			self._add_hit((pad, y, right, y + height), SIGN_IN_KEY)
 		y += height
-
-		message = view.sign_in_message
-		if not view.signing_in and message and message != SIGNED_OUT_TEXT:
-			y += self._unit(SIGN_IN_PAGE_GAP)
-			item = self._text(
-				(center, y),
-				message,
-				"caption",
-				self._palette.label_secondary,
-				anchor="n",
-				width=right - pad,
-			)
-			self._canvas.itemconfigure(item, justify="center")
-			y = float(self._canvas.bbox(item)[3])
-
 		return self._draw_sign_in_link(y, centered=True) + self._unit(SIGN_IN_PAGE_PAD)
 
 	def _draw_sign_in_link(self, y: float, centered: bool) -> float:

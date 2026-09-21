@@ -73,7 +73,7 @@ struct PanelView: View {
 
 	/// Offer sign-in directly for the selected provider before showing its settings.
 	/// - Parameter state: The provider awaiting authentication.
-	/// - Returns: The provider-colored action and any authentication status.
+	/// - Returns: The provider-colored action and, while a sign-in is under way, its address.
 	private func signIn(state: ProviderState) -> some View {
 		VStack(spacing: 12) {
 			Button {
@@ -92,12 +92,8 @@ struct PanelView: View {
 			}
 			.buttonStyle(.plain)
 			.disabled(state.signingIn)
-			if !state.signingIn, !state.signInMessage.isEmpty, state.signInMessage != "Signed out." {
-				Text(state.signInMessage)
-					.font(.system(size: 11))
-					.foregroundStyle(.secondary)
-					.fixedSize(horizontal: false, vertical: true)
-			}
+			// A failed or abandoned sign-in goes back to this page as it was, with
+			// nothing said about it, so trying again is the one thing on offer.
 			if !state.signInLink.isEmpty {
 				SignInLink(address: state.signInLink)
 			}
