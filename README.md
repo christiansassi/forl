@@ -1,8 +1,6 @@
 <p align="center">
 	<img src="assets/banner.png" width="100%" alt="FORL">
 	<br><br>
-	<img src="assets/demo.gif" width="100%" alt="FORL in the menu bar, the panel, the widgets and Control Center">
-	<br><br>
     Made with ❤️ (and a lot of
 <img src="assets/claude.svg" alt="Claude" height="16" align="absmiddle">
 &nbsp;
@@ -17,6 +15,7 @@
 # Table of Contents
 
 - [Introduction](#introduction)
+- [Demo](#demo)
 - [Installation](#installation)
 	- [Windows](#windows)
 	- [macOS](#macos)
@@ -27,6 +26,12 @@ This tool helps you keep track of your usage and stay within your limits. It cur
 
 - ChatGPT
 - Claude
+
+# Demo
+
+<p align="center">
+	<img src="assets/demo.gif" width="100%" alt="FORL in the menu bar, the panel, the widgets and Control Center">
+</p>
 
 # Installation
 
