@@ -15,10 +15,11 @@
 # Table of Contents
 
 - [Introduction](#introduction)
-- [Demo](#demo)
+- [Demo (macOS)](#demo-macos)
 - [Installation](#installation)
-	- [Windows](#windows)
 	- [macOS](#macos)
+	- [Windows](#windows)
+	- [Linux](#linux)
 
 # Introduction
 
@@ -27,13 +28,28 @@ This tool helps you keep track of your usage and stay within your limits. It cur
 - ChatGPT
 - Claude
 
-# Demo
+# Demo (macOS)
 
 <p align="center">
 	<img src="assets/demo.gif" width="100%" alt="FORL in the menu bar, the panel, the widgets and Control Center">
 </p>
 
 # Installation
+
+## macOS
+
+> [!IMPORTANT]
+> Requires macOS 15 or later and Xcode.
+
+1. Open `src/mac/FORL.xcodeproj` in Xcode.
+2. For both the `FORL` and `FORLWidgets` targets, select your team under **Signing & Capabilities**.
+3. Build and install the app:
+
+	```bash
+	bash src/mac/build.command
+	```
+
+The app is installed to `/Applications/FORL.app`.
 
 ## Windows
 
@@ -47,17 +63,6 @@ python src/windows/build.py
 
 The executable is written to `src/windows/dist/FORL.exe`.
 
-## macOS
+## Linux
 
-> [!IMPORTANT]
-> Requires macOS 15 or later and Xcode.
-
-1. Open `src/mac/FORL.xcodeproj`src/mac/FORL.xcodeproj in Xcode.
-2. For both the `FORL` and `FORLWidgets` targets, select your team under **Signing & Capabilities**.
-3. Build and install the app:
-
-	```bash
-	bash src/mac/build.command
-	```
-
-The app is installed to `/Applications/FORL.app`.
+TBA
