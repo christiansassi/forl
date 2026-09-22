@@ -43,6 +43,10 @@ class Provider:
 			str; raises CredentialsError or UsageRequestError.
 		read: Takes one usage reading. Callable taking no arguments and returning
 			a UsageSnapshot; raises CredentialsError or UsageRequestError.
+		start_session: Sends one short message, which starts the five hour
+			session when none is running. Blocks for as long as the request
+			takes. Callable taking no arguments and returning None; raises
+			CredentialsError or UsageRequestError.
 	"""
 
 	key: str
@@ -52,6 +56,7 @@ class Provider:
 	oauth: OAuthClient
 	sign_in: Callable[[Callable[[str, bool], None]], str]
 	read: Callable[[], UsageSnapshot]
+	start_session: Callable[[], None]
 
 
 PROVIDERS = {
@@ -63,6 +68,7 @@ PROVIDERS = {
 		oauth=claude.OAUTH,
 		sign_in=claude.sign_in,
 		read=claude.read,
+		start_session=claude.start_session,
 	),
 	CHATGPT_KEY: Provider(
 		key=CHATGPT_KEY,
@@ -72,6 +78,7 @@ PROVIDERS = {
 		oauth=codex.OAUTH,
 		sign_in=codex.sign_in,
 		read=codex.read,
+		start_session=codex.start_session,
 	),
 }
 

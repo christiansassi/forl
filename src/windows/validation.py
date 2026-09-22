@@ -98,3 +98,23 @@ def require_member(value: Any, allowed: frozenset[str], name: str) -> str:
 	if value not in allowed:
 		raise ValueError(f"{name} must be one of {sorted(allowed)}, got {value!r}")
 	return value
+
+
+def require_int_in_range(value: Any, low: int, high: int, name: str) -> int:
+	"""Return an integer argument after checking that it lies within an inclusive range.
+
+	Args:
+		value: The argument value to check. Expected int; bool is rejected.
+		low: Smallest accepted value, inclusive. int.
+		high: Largest accepted value, inclusive. int.
+		name: Name of the argument, used in the error message. str.
+
+	Returns:
+		int: The validated value, unchanged.
+	"""
+	if isinstance(value, bool):
+		raise TypeError(f"{name} must be int, got bool")
+	require_type(value, int, name)
+	if not low <= value <= high:
+		raise ValueError(f"{name} must be between {low} and {high}, got {value}")
+	return value

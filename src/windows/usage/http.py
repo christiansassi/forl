@@ -1,8 +1,8 @@
 """The HTTP calls the widget makes.
 
-Both providers answer a plain authenticated GET with a JSON document, and both
-renew a sign-in with a plain form encoded POST, so the requests, the error
-mapping and the decoding live here once.
+Both providers answer a plain authenticated GET with a JSON document, both
+renew a sign-in with a plain form encoded POST, and both take a message as a
+JSON POST, so the requests, the error mapping and the decoding live here once.
 """
 
 from __future__ import annotations
@@ -60,19 +60,19 @@ def _reason(error: urllib.error.HTTPError) -> str:
 	return str(document)[:200]
 
 
-def _send(request: urllib.request.Request, timeout: float) -> dict[str, Any]:
-	"""Make one request and return the decoded JSON body.
+def _exchange(request: urllib.request.Request, timeout: float) -> bytes:
+	"""Make one request and return its body, read to the end.
 
 	Args:
 		request: The prepared request. urllib.request.Request.
 		timeout: Socket timeout in seconds. float.
 
 	Returns:
-		dict[str, Any]: The decoded JSON body.
+		bytes: The body of the answer.
 	"""
 	try:
 		with urllib.request.urlopen(request, timeout=timeout) as response:
-			return _decode(response.read())
+			return response.read()
 	except urllib.error.HTTPError as exc:
 		# What the endpoint said goes to the error stream rather than to the
 		# panel: "invalid_client" and "invalid_grant" mean very different things
@@ -87,6 +87,55 @@ def _send(request: urllib.request.Request, timeout: float) -> dict[str, Any]:
 		raise UsageRequestError(f"Request timed out after {timeout:g}s.") from exc
 
 
+def _send(request: urllib.request.Request, timeout: float) -> dict[str, Any]:
+	"""Make one request and return the decoded JSON body.
+
+	Args:
+		request: The prepared request. urllib.request.Request.
+		timeout: Socket timeout in seconds. float.
+
+	Returns:
+		dict[str, Any]: The decoded JSON body.
+	"""
+	return _decode(_exchange(request, timeout))
+
+
+def post_json(
+	url: str,
+	payload: dict[str, Any],
+	headers: dict[str, str],
+	timeout: float = 60.0,
+) -> bytes:
+	"""Send a JSON POST and return the answer's body, read to the end.
+
+	The body is returned undecoded, because one of the endpoints this sends to
+	answers with a stream of events rather than one JSON document, and reading
+	it to the end is what lets the request finish.
+
+	Args:
+		url: The endpoint to post to. str, non-empty.
+		payload: The document to send. dict.
+		headers: Request headers, including the authorization header. dict of
+			str to str.
+		timeout: Socket timeout for the request in seconds. float, between 1 and 120.
+
+	Returns:
+		bytes: The body of the answer.
+	"""
+	require_non_empty_str(url, "url")
+	require_type(payload, dict, "payload")
+	require_type(headers, dict, "headers")
+	require_number_in_range(timeout, 1.0, 120.0, "timeout")
+
+	request = urllib.request.Request(
+		url,
+		data=json.dumps(payload).encode("utf-8"),
+		headers={"Content-Type": "application/json", **headers},
+		method="POST",
+	)
+	return _exchange(request, timeout)
+
+
 def post_form(
 	url: str,
 	fields: dict[str, str],
@@ -95,8 +144,8 @@ def post_form(
 ) -> dict[str, Any]:
 	"""Send a form encoded POST and return the decoded JSON answer.
 
-	This is the shape an OAuth token endpoint takes, which is the only POST the
-	widget makes: the one that gets or renews a sign-in.
+	This is the shape an OAuth token endpoint takes: the POST that gets or
+	renews a sign-in.
 
 	Args:
 		url: The endpoint to post to. str, non-empty.

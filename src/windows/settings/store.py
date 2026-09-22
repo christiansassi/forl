@@ -30,6 +30,7 @@ from typing import Any
 
 from ..jsonstore import read_json, write_json
 from ..paths import data_file
+from ..schedule.session_start import SessionStart, from_dict as schedule_from_dict, to_dict as schedule_to_dict
 from ..validation import require_non_empty_str, require_type
 
 SETTINGS_FILE = "settings.json"
@@ -40,6 +41,7 @@ STARTUP_FIELD = "start_on_startup"
 VIEWS_FIELD = "views"
 MENU_BAR_FIELD = "menu_bar"
 DOCK_FIELD = "dock"
+SESSION_START_FIELD = "session_start"
 
 # On by default, so a widget that has never been configured is there after a
 # restart rather than having to be started by hand.
@@ -62,11 +64,14 @@ class Preferences:
 			back to its own default. tuple of str, or None.
 		menu_bar: Kept for a preferences file an older widget wrote. bool.
 		dock: Kept for a preferences file an older widget wrote. bool.
+		session_start: When to start the five hour session by sending a
+			message, and the day it last did. SessionStart.
 	"""
 
 	views: tuple[str, ...] | None
 	menu_bar: bool = DEFAULT_MENU_BAR
 	dock: bool = DEFAULT_DOCK
+	session_start: SessionStart = SessionStart()
 
 
 DEFAULTS = Preferences(views=None)
@@ -163,6 +168,7 @@ def load(provider_key: str) -> Preferences:
 		views=tuple(view for view in views if isinstance(view, str) and view) if isinstance(views, list) else None,
 		menu_bar=_flag(section, MENU_BAR_FIELD, DEFAULTS.menu_bar),
 		dock=_flag(section, DOCK_FIELD, DEFAULTS.dock),
+		session_start=schedule_from_dict(section.get(SESSION_START_FIELD)),
 	)
 
 
@@ -179,7 +185,11 @@ def save(provider_key: str, preferences: Preferences) -> bool:
 	"""
 	require_non_empty_str(provider_key, "provider_key")
 	require_type(preferences, Preferences, "preferences")
-	section: dict[str, Any] = {MENU_BAR_FIELD: preferences.menu_bar, DOCK_FIELD: preferences.dock}
+	section: dict[str, Any] = {
+		MENU_BAR_FIELD: preferences.menu_bar,
+		DOCK_FIELD: preferences.dock,
+		SESSION_START_FIELD: schedule_to_dict(preferences.session_start),
+	}
 	if preferences.views is not None:
 		section[VIEWS_FIELD] = list(preferences.views)
 	return _write_section(provider_key, section)

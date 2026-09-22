@@ -23,10 +23,15 @@ panel keeps its position and its chrome across the change. The window takes
 whichever of the two views is taller, which is the reading once one has been
 taken, so opening the settings does not resize it. The settings are laid out as
 the Mac app's are: what applies to the whole widget, who is signed in to the
-service of the tab, and which of its usages the tray icons show.
+service of the tab, when its five hour usage window is started for the user,
+and which of its usages the tray icons show.
 
 Colors follow the light or dark mode chosen for applications in Windows, asked
 again each time the panel opens.
+
+Until the first reading of a service arrives, its page is a skeleton: blocks
+where the plan, the rows and the countdown will be, pulsing slowly, so the page
+has the shape of what is coming instead of a word saying it is coming.
 
 Nothing here is a Tk widget, so anything that can be clicked registers the area
 that reaches it and the canvas looks the pointer up there. Each of those also
@@ -38,10 +43,12 @@ one flat background throughout.
 
 from __future__ import annotations
 
+import math
 import time
 import tkinter as tk
 import tkinter.font as tkfont
-from datetime import datetime, timezone
+from dataclasses import replace
+from datetime import date, datetime, timezone
 from typing import Callable
 
 from PIL import Image, ImageTk
@@ -49,7 +56,16 @@ from PIL import Image, ImageTk
 from ..providers import Provider
 from ..render.glyphs import render_back, render_gear
 from ..render.logo import render_logo
-from ..render.shapes import outlined_fill, render_checkbox
+from ..render.shapes import outlined_fill, render_checkbox, rounded_fill
+from ..schedule.session_start import (
+	MAX_GRACE_MINUTES,
+	MESSAGE_TEXT,
+	MINUTE_STEP,
+	SessionStart,
+	format_time,
+	stepped_time,
+	switched,
+)
 from ..render.theme import (
 	DARK_PALETTE,
 	SWITCH_OFF_OPACITY,
@@ -65,8 +81,9 @@ from ..usage.snapshot import PRODUCT_KEY_PREFIX
 from ..validation import require_member, require_non_empty_str, require_type
 from .animation import Spring, Ticker
 from .capsule_bar import CapsuleBar
-from .core import ProviderView
+from .core import LOADING_TEXT, ProviderView
 from .palette import current_palette
+from .slider import Slider
 from .switch import Switch
 from ..system import animations_enabled, apply_panel_chrome, work_area
 from .formatting import format_percent, format_subtitle
@@ -115,6 +132,15 @@ SIGN_IN_LINK_KEY = "sign_in_link"
 # A tab and a Show checkbox each carry what they stand for after the prefix.
 TAB_KEY_PREFIX = "tab:"
 SHOW_KEY_PREFIX = "show:"
+SESSION_START_KEY = "session_start"
+GRACE_KEY = "grace"
+# Each step of the time carries how far it moves the hours and the minutes.
+TIME_STEPS = {
+	"time:hour_down": (-1, 0),
+	"time:hour_up": (1, 0),
+	"time:minute_down": (0, -MINUTE_STEP),
+	"time:minute_up": (0, MINUTE_STEP),
+}
 
 SETTINGS_TITLE = "Settings"
 GENERAL_TITLE = "General"
@@ -127,6 +153,17 @@ SIGNED_IN_LABEL = "Signed in"
 NOT_SIGNED_IN_LABEL = "Not signed in"
 SIGN_IN_TO_LABEL = "Sign in to {label}"
 SIGNING_IN_LABEL = "Signing in..."
+SESSION_START_TITLE = "Usage window"
+SESSION_START_LABEL = "Start usage window automatically"
+SESSION_START_CAPTION = f'Sends "{MESSAGE_TEXT}" at this time when the current session is at 0%.'
+SESSION_START_TOMORROW = "Starts tomorrow."
+TIME_LABEL = "Time"
+GRACE_LABEL = "Late by up to"
+GRACE_VALUE = "{minutes} min"
+# A minus sign rather than a hyphen, which is too short to read as a button.
+STEP_DOWN_LABEL = "−"
+STEP_UP_LABEL = "+"
+TIME_SEPARATOR = ":"
 
 # The row of tabs across the top. The selected tab is tinted with its service's
 # accent, filled lightly and outlined a little more strongly, as on the Mac.
@@ -156,6 +193,15 @@ CHECKBOX_GAP = 8
 
 SWITCH_WIDTH = 40
 SWITCH_HEIGHT = 24
+
+# The time of the session start is two fields, each between a step down and a
+# step up, and how late it may be is a slider under its own line.
+TIME_STEP_GAP = 10
+TIME_FIELD_GAP = 12
+SLIDER_HEIGHT = 18
+SLIDER_GAP = 4
+SLIDER_RING_OPACITY = 0.9
+SLIDER_TRACK_OPACITY = 0.25
 
 # A setting is the same shape as a usage row, a name on the left and one control
 # on the right, and is set on the same rhythm so the two views read alike.
@@ -203,6 +249,25 @@ PIXELS_PER_POINT = 96.0 / 72.0
 BAR_RESPONSE = 0.45
 
 PRODUCT_SECTION_TITLE = "This week's usage by product"
+
+# The skeleton drawn before the first reading: two rows shaped like the session
+# and weekly rows, a block for the plan and one for the countdown. Each block is
+# the ink of the labels thinned into the surface, and the thinning swings
+# between two amounts over one period. The pulse is drawn from a handful of
+# precomputed shades rather than a new one every frame.
+SKELETON_ROWS = (110, 80)
+SKELETON_SUBTITLE_WIDTH = 150
+SKELETON_TEXT_HEIGHT = 10
+SKELETON_CAPTION_HEIGHT = 8
+SKELETON_TEXT_INSET = 3
+SKELETON_VALUE_WIDTH = 30
+SKELETON_PLAN_WIDTH = 36
+SKELETON_FOOTER_WIDTH = 130
+SKELETON_RADIUS = 3
+SKELETON_LOW_OPACITY = 0.07
+SKELETON_HIGH_OPACITY = 0.16
+SKELETON_PERIOD_SECONDS = 1.4
+SKELETON_SHADES = 12
 STATUS_INTERVAL_MS = 1000
 
 # Clicking a tray icon takes focus away from the panel, which dismisses it
@@ -224,6 +289,7 @@ class Panel:
 		on_sign_out: Callable[[str], None],
 		on_open_sign_in: Callable[[str], None],
 		on_toggle_metric: Callable[[str, str], None],
+		on_session_start_change: Callable[[str, SessionStart], None],
 	) -> None:
 		"""Create the panel as a hidden child of the application root window.
 
@@ -254,6 +320,10 @@ class Panel:
 			on_toggle_metric: Called with a service's key and a usage's key when
 				the user ticks or unticks that usage in the Show section. Callable
 				taking two str and returning None.
+			on_session_start_change: Called with a service's key and its new
+				session start schedule whenever the user changes it. The panel
+				shows the schedule and does not store it. Callable taking one str
+				and one SessionStart and returning None.
 
 		Returns:
 			None.
@@ -271,6 +341,7 @@ class Panel:
 			("on_sign_out", on_sign_out),
 			("on_open_sign_in", on_open_sign_in),
 			("on_toggle_metric", on_toggle_metric),
+			("on_session_start_change", on_session_start_change),
 		):
 			if not callable(callback):
 				raise TypeError(f"{name} must be callable")
@@ -283,6 +354,7 @@ class Panel:
 		self._on_sign_out = on_sign_out
 		self._on_open_sign_in = on_open_sign_in
 		self._on_toggle_metric = on_toggle_metric
+		self._on_session_start_change = on_session_start_change
 		self._selected_key = providers[0].key
 		self._current = describe(self._selected_key)
 		self._palette: Palette = DARK_PALETTE
@@ -295,6 +367,13 @@ class Panel:
 		self._control_photos: list[ImageTk.PhotoImage] = []
 		self._hovered = ""
 		self._switch: Switch | None = None
+		self._session_switch: Switch | None = None
+		self._slider: Slider | None = None
+		self._grace_item = 0
+		# The value a drag of the slider has reached, None while none is under
+		# way. It is only stored when the button is let go, so a drag writes the
+		# preferences once rather than at every step.
+		self._dragged_grace: int | None = None
 		self._link_caption_item = 0
 		self._bars: list[tuple[CapsuleBar, Spring]] = []
 		self._springs: dict[str, Spring] = {}
@@ -303,6 +382,11 @@ class Panel:
 		self._status_item = 0
 		self._spinner_item = 0
 		self._status_job: str | None = None
+		# Every skeleton block on the canvas, with the size it was drawn at, and
+		# the shades already rendered for each size.
+		self._skeleton: list[tuple[int, int, int]] = []
+		self._skeleton_photos: dict[tuple[int, int, int], ImageTk.PhotoImage] = {}
+		self._skeleton_clock = 0.0
 		self._fonts: dict[tuple[str, int, str], tkfont.Font] = {}
 		self._ascents: dict[tuple[str, int, str], int] = {}
 		self._spinner_angle = 90.0
@@ -330,6 +414,8 @@ class Panel:
 		self._canvas.pack(fill="both", expand=True)
 		self._canvas.bind("<MouseWheel>", self._on_mouse_wheel)
 		self._canvas.bind("<Button-1>", self._on_click)
+		self._canvas.bind("<B1-Motion>", self._on_drag)
+		self._canvas.bind("<ButtonRelease-1>", self._on_release)
 		self._canvas.bind("<Motion>", self._on_motion)
 		self._canvas.bind("<Leave>", self._on_leave)
 		self._apply_palette()
@@ -525,6 +611,15 @@ class Panel:
 		pad = self._unit(PANEL_PAD)
 		right = self._unit(PANEL_WIDTH) - pad
 
+		if self._loading():
+			# The skeleton says a reading is on its way, so neither the word nor
+			# the spinner is needed beside it.
+			self._status_item = 0
+			self._spinner_item = 0
+			top = y + self._unit(SKELETON_TEXT_INSET)
+			self._skeleton_block((pad, top, pad + self._unit(SKELETON_FOOTER_WIDTH), top + self._unit(SKELETON_CAPTION_HEIGHT)))
+			return y + self._unit(20)
+
 		self._status_item = self._text(
 			(pad, y),
 			self._current.status,
@@ -568,7 +663,7 @@ class Panel:
 		"""
 		snapshot = self._current.snapshot
 		if snapshot is None:
-			return y
+			return self._draw_skeleton_rows(y) if self._loading() else y
 
 		now = datetime.now(timezone.utc)
 		for window in snapshot.windows():
@@ -606,6 +701,104 @@ class Panel:
 				PRODUCT_ROW_MIN_HEIGHT,
 			)
 			y += self._unit(PRODUCT_ROW_GAP)
+		return y
+
+	def _loading(self) -> bool:
+		"""Return whether the service of the tab is waiting for its first reading.
+
+		Returns:
+			bool: True when there is no reading and nothing else to say, such as a
+			sign-in that has run out, which is not a wait and gets no skeleton.
+		"""
+		return self._current.snapshot is None and self._current.status == LOADING_TEXT
+
+	def _skeleton_shade(self, width: int, height: int, level: int) -> ImageTk.PhotoImage:
+		"""Return one skeleton block in one shade of its pulse, rendering it once.
+
+		Args:
+			width: Width of the block in pixels. int, greater than 0.
+			height: Height of the block in pixels. int, greater than 0.
+			level: Which shade, 0 the faintest. int, 0 to SKELETON_SHADES - 1.
+
+		Returns:
+			ImageTk.PhotoImage: The block, kept by the panel until the palette or
+			the scale changes.
+		"""
+		key = (width, height, level)
+		photo = self._skeleton_photos.get(key)
+		if photo is None:
+			share = level / (SKELETON_SHADES - 1)
+			opacity = SKELETON_LOW_OPACITY + (SKELETON_HIGH_OPACITY - SKELETON_LOW_OPACITY) * share
+			color = mix_hex(self._palette.surface, self._palette.label_primary, opacity)
+			photo = ImageTk.PhotoImage(rounded_fill(width, height, color, self._unit(SKELETON_RADIUS)))
+			self._skeleton_photos[key] = photo
+		return photo
+
+	def _skeleton_level(self) -> int:
+		"""Return the shade every skeleton block is in at this moment.
+
+		Returns:
+			int: The shade, 0 to SKELETON_SHADES - 1, following a cosine over
+			SKELETON_PERIOD_SECONDS.
+		"""
+		phase = (self._skeleton_clock % SKELETON_PERIOD_SECONDS) / SKELETON_PERIOD_SECONDS
+		swing = 0.5 - 0.5 * math.cos(2.0 * math.pi * phase)
+		return int(round(swing * (SKELETON_SHADES - 1)))
+
+	def _skeleton_block(self, box: tuple[float, float, float, float]) -> None:
+		"""Place one skeleton block, in the shade the pulse has reached.
+
+		Args:
+			box: The block as (left, top, right, bottom) in device pixels. tuple
+				of four floats.
+
+		Returns:
+			None.
+		"""
+		left, top, right, bottom = box
+		width = max(1, int(round(right - left)))
+		height = max(1, int(round(bottom - top)))
+		image = self._skeleton_shade(width, height, self._skeleton_level())
+		item = self._canvas.create_image(int(round(left)), int(round(top)), image=image, anchor="nw", tags="content")
+		self._skeleton.append((item, width, height))
+
+	def _draw_skeleton_rows(self, y: float) -> float:
+		"""Draw rows shaped like the session and weekly rows, in skeleton blocks.
+
+		Each row has the name, the line under it, the bar and the percentage in
+		the columns a real row puts them in, so the reading lands where the eye
+		already is.
+
+		Args:
+			y: Vertical cursor in device pixels. float.
+
+		Returns:
+			float: The vertical cursor after the last row.
+		"""
+		pad = self._unit(PANEL_PAD)
+		right = self._unit(PANEL_WIDTH) - pad
+		inset = self._unit(SKELETON_TEXT_INSET)
+		text_height = self._unit(SKELETON_TEXT_HEIGHT)
+		caption_height = self._unit(SKELETON_CAPTION_HEIGHT)
+		half_bar = self._unit(BAR_HEIGHT) / 2.0
+		for label_width in SKELETON_ROWS:
+			height = self._unit(LIMIT_ROW_MIN_HEIGHT)
+			center = y + height / 2.0
+			self._skeleton_block((pad, y + inset, pad + self._unit(label_width), y + inset + text_height))
+			subtitle = y + self._unit(SUBTITLE_OFFSET) + inset
+			self._skeleton_block((pad, subtitle, pad + self._unit(SKELETON_SUBTITLE_WIDTH), subtitle + caption_height))
+			self._skeleton_block(
+				(
+					self._unit(BAR_COLUMN_LEFT),
+					center - half_bar,
+					right - self._unit(VALUE_COLUMN_WIDTH),
+					center + half_bar,
+				)
+			)
+			self._skeleton_block(
+				(right - self._unit(SKELETON_VALUE_WIDTH), center - text_height / 2.0, right, center + text_height / 2.0)
+			)
+			y += height + self._unit(LIMIT_ROW_GAP)
 		return y
 
 	def _font_pixels(self, style: str) -> int:
@@ -710,7 +903,13 @@ class Panel:
 			self._palette.label_primary,
 		)
 
-		if self._current.snapshot is not None:
+		if self._loading():
+			title_box = self._canvas.bbox(title)
+			height = self._unit(SKELETON_CAPTION_HEIGHT)
+			middle = self._text_middle(y, "title")
+			left = title_box[2] + self._unit(PLAN_GAP)
+			self._skeleton_block((left, middle - height / 2.0, left + self._unit(SKELETON_PLAN_WIDTH), middle + height / 2.0))
+		elif self._current.snapshot is not None:
 			# Both runs are anchored by the top of their line box, so sitting the
 			# smaller one lower by the difference in ascent puts the two on one
 			# baseline. Matching the bottoms instead would drop it, because a
@@ -946,8 +1145,9 @@ class Panel:
 		"""Draw every setting, in the groups the Mac app puts them in.
 
 		General holds what applies to the whole widget, Account who is signed in
-		to the service of the tab, and Show which of its usages the tray icons
-		show, once there is a reading to say what those are.
+		to the service of the tab, Usage window when its five hour window is
+		started for the user, and Show which of its usages the tray icons show,
+		once there is a reading to say what those are.
 
 		Args:
 			y: Vertical cursor in device pixels. float.
@@ -959,6 +1159,8 @@ class Panel:
 		y = self._draw_startup_row(y)
 		y = self._draw_section_label(ACCOUNT_TITLE, y + self._unit(SETTINGS_SECTION_GAP), SECTION_LABEL_GAP)
 		y = self._draw_account_row(y)
+		y = self._draw_section_label(SESSION_START_TITLE, y + self._unit(SETTINGS_SECTION_GAP), SECTION_LABEL_GAP)
+		y = self._draw_session_start(y)
 		if self._current.groups:
 			y = self._draw_section_label(SHOW_TITLE, y + self._unit(SETTINGS_SECTION_GAP), SHOW_LABEL_GAP)
 			y = self._draw_show_rows(y)
@@ -1054,6 +1256,38 @@ class Panel:
 		self._canvas.move(name, 0, middle - self._text_middle(y, "row"))
 		return (middle, height)
 
+	def _draw_switch_row(self, label: str, y: float, on: bool, key: str) -> tuple[Switch, float]:
+		"""Draw the name of a setting and the switch that sets it.
+
+		Args:
+			label: Name of the setting, which is one line. str, non-empty.
+			y: Vertical cursor in device pixels. float.
+			on: Which way the switch is drawn. bool.
+			key: What to report when the switch is clicked. str, non-empty.
+
+		Returns:
+			tuple[Switch, float]: The switch, and the vertical cursor at the
+			bottom of the row.
+		"""
+		require_type(on, bool, "on")
+		require_non_empty_str(key, "key")
+		right = self._unit(PANEL_WIDTH) - self._unit(PANEL_PAD)
+		width = self._unit(SWITCH_WIDTH)
+		switch_height = self._unit(SWITCH_HEIGHT)
+		middle, height = self._draw_settings_label(label, y, switch_height)
+
+		# On, the switch is the color of the service of the tab, as on the Mac.
+		switch = Switch(
+			self._canvas,
+			(right - width, middle - switch_height / 2.0, right, middle + switch_height / 2.0),
+			mix_hex(self._palette.surface, self._palette.label_primary, SWITCH_OFF_OPACITY),
+			self._accent,
+			"content",
+		)
+		switch.set_fraction(1.0 if on else 0.0)
+		self._add_hit(switch.box, key)
+		return (switch, y + height)
+
 	def _draw_startup_row(self, y: float) -> float:
 		"""Draw the name of the startup setting and the switch that sets it.
 
@@ -1063,22 +1297,210 @@ class Panel:
 		Returns:
 			float: The vertical cursor at the bottom of the row.
 		"""
-		right = self._unit(PANEL_WIDTH) - self._unit(PANEL_PAD)
-		width = self._unit(SWITCH_WIDTH)
-		switch_height = self._unit(SWITCH_HEIGHT)
-		middle, height = self._draw_settings_label(STARTUP_LABEL, y, switch_height)
+		self._switch, y = self._draw_switch_row(STARTUP_LABEL, y, self._start_on_startup, STARTUP_KEY)
+		return y
 
-		# On, the switch is the color of the service of the tab, as on the Mac.
-		self._switch = Switch(
+	def _draw_session_start(self, y: float) -> float:
+		"""Draw the session start switch and, while it is on, the time and the grace.
+
+		Args:
+			y: Vertical cursor in device pixels. float.
+
+		Returns:
+			float: The vertical cursor after the section.
+		"""
+		pad = self._unit(PANEL_PAD)
+		right = self._unit(PANEL_WIDTH) - pad
+		schedule = self._current.session_start
+		self._session_switch, y = self._draw_switch_row(SESSION_START_LABEL, y, schedule.enabled, SESSION_START_KEY)
+		if not schedule.enabled:
+			return y
+
+		caption = SESSION_START_CAPTION
+		if schedule.starts_on is not None and schedule.starts_on > date.today():
+			caption = f"{caption} {SESSION_START_TOMORROW}"
+		item = self._text((pad, y), caption, "caption", self._palette.label_secondary, width=right - pad)
+		y = float(self._canvas.bbox(item)[3]) + self._unit(SETTINGS_ROW_GAP)
+		y = self._draw_time_row(schedule, y) + self._unit(SETTINGS_ROW_GAP)
+		return self._draw_grace_row(schedule, y)
+
+	def _draw_time_row(self, schedule: SessionStart, y: float) -> float:
+		"""Draw the time the session is started at, with a step down and up on each field.
+
+		Laid out from the right hand edge, so the minutes line up with the end
+		of every other control in the settings.
+
+		Args:
+			schedule: The schedule being shown. SessionStart.
+			y: Vertical cursor in device pixels. float.
+
+		Returns:
+			float: The vertical cursor at the bottom of the row.
+		"""
+		require_type(schedule, SessionStart, "schedule")
+		middle, height = self._draw_settings_label(TIME_LABEL, y, 0.0)
+		hour, minute = format_time(schedule.minute_of_day)
+		step_gap = self._unit(TIME_STEP_GAP)
+		field_gap = self._unit(TIME_FIELD_GAP)
+
+		x = self._unit(PANEL_WIDTH) - self._unit(PANEL_PAD)
+		x = self._draw_step(STEP_UP_LABEL, x, middle, "time:minute_up") - step_gap
+		x = self._field_text(minute, x, middle) - step_gap
+		x = self._draw_step(STEP_DOWN_LABEL, x, middle, "time:minute_down") - field_gap
+		x = self._field_text(TIME_SEPARATOR, x, middle) - field_gap
+		x = self._draw_step(STEP_UP_LABEL, x, middle, "time:hour_up") - step_gap
+		x = self._field_text(hour, x, middle) - step_gap
+		self._draw_step(STEP_DOWN_LABEL, x, middle, "time:hour_down")
+		return y + height
+
+	def _draw_step(self, text: str, right: float, middle: float, key: str) -> float:
+		"""Draw a step of the time, and return where it begins.
+
+		Drawn in the secondary label color, as the gear and the chevron are, and
+		in the color of the service while the pointer is over it or pressing it.
+
+		Args:
+			text: The sign, STEP_DOWN_LABEL or STEP_UP_LABEL. str, non-empty.
+			right: Where its right hand edge sits, in device pixels. float.
+			middle: The line it is centered on, in device pixels. float.
+			key: What to report when it is clicked. str, non-empty.
+
+		Returns:
+			float: The left edge of the sign in device pixels.
+		"""
+		require_non_empty_str(text, "text")
+		require_non_empty_str(key, "key")
+		resting = self._palette.label_secondary
+		lit = self._accent
+		item = self._text((right, middle), text, "row", resting, anchor="e")
+		self._lit[key] = lambda on: self._canvas.itemconfigure(item, fill=lit if on else resting)
+		return self._add_text_hit(item, key)[0]
+
+	def _field_text(self, text: str, right: float, middle: float) -> float:
+		"""Draw one field of the time, and return where it begins.
+
+		Args:
+			text: The field, such as "08". str, non-empty.
+			right: Where its right hand edge sits, in device pixels. float.
+			middle: The line it is centered on, in device pixels. float.
+
+		Returns:
+			float: The left edge of the field in device pixels.
+		"""
+		require_non_empty_str(text, "text")
+		item = self._text((right, middle), text, "row_value", self._palette.label_primary, anchor="e")
+		return float(self._canvas.bbox(item)[0])
+
+	def _draw_grace_row(self, schedule: SessionStart, y: float) -> float:
+		"""Draw how late the session may still be started, and the slider that sets it.
+
+		Args:
+			schedule: The schedule being shown. SessionStart.
+			y: Vertical cursor in device pixels. float.
+
+		Returns:
+			float: The vertical cursor at the bottom of the slider.
+		"""
+		require_type(schedule, SessionStart, "schedule")
+		pad = self._unit(PANEL_PAD)
+		right = self._unit(PANEL_WIDTH) - pad
+		grace = self._dragged_grace if self._dragged_grace is not None else schedule.grace_minutes
+		middle, height = self._draw_settings_label(GRACE_LABEL, y, 0.0)
+		self._grace_item = self._text(
+			(right, middle),
+			GRACE_VALUE.format(minutes=grace),
+			"row_value",
+			self._palette.label_secondary,
+			anchor="e",
+		)
+
+		top = y + height + self._unit(SLIDER_GAP)
+		size = self._unit(SLIDER_HEIGHT)
+		self._slider = Slider(
 			self._canvas,
-			(right - width, middle - switch_height / 2.0, right, middle + switch_height / 2.0),
-			mix_hex(self._palette.surface, self._palette.label_primary, SWITCH_OFF_OPACITY),
-			self._accent,
+			(pad, top, right, top + size),
+			MAX_GRACE_MINUTES,
+			MINUTE_STEP,
+			(
+				mix_hex(self._palette.surface, self._palette.label_primary, SLIDER_TRACK_OPACITY),
+				self._accent,
+				mix_hex(self._palette.surface, self._palette.label_primary, 1.0 - SLIDER_RING_OPACITY),
+			),
 			"content",
 		)
-		self._switch.set_fraction(1.0 if self._start_on_startup else 0.0)
-		self._add_hit(self._switch.box, STARTUP_KEY)
-		return y + height
+		self._slider.set_value(grace)
+		self._add_hit(self._slider.box, GRACE_KEY)
+		return top + size
+
+	def _change_session_start(self, schedule: SessionStart) -> None:
+		"""Report a new session start schedule for the service of the tab.
+
+		Args:
+			schedule: The schedule as the user has now set it. SessionStart.
+
+		Returns:
+			None. The owner stores it and reports the change, which redraws
+			the panel.
+		"""
+		require_type(schedule, SessionStart, "schedule")
+		self._on_session_start_change(self._selected_key, schedule)
+
+	def _toggle_session_start(self) -> None:
+		"""Turn the session start switch over and report the new schedule.
+
+		Returns:
+			None.
+		"""
+		schedule = self._current.session_start
+		if self._session_switch is not None:
+			self._session_switch.set_fraction(0.0 if schedule.enabled else 1.0)
+		self._change_session_start(switched(schedule, not schedule.enabled, datetime.now()))
+
+	def _drag_grace(self, x: float) -> None:
+		"""Move the grace slider to the value under the pointer.
+
+		Args:
+			x: Position of the pointer across the canvas in device pixels. float.
+
+		Returns:
+			None.
+		"""
+		if self._slider is None:
+			return
+		self._dragged_grace = self._slider.value_at(x)
+		self._slider.set_value(self._dragged_grace)
+		if self._grace_item:
+			self._canvas.itemconfigure(self._grace_item, text=GRACE_VALUE.format(minutes=self._dragged_grace))
+
+	def _on_drag(self, event: tk.Event) -> None:
+		"""Follow the pointer while the grace slider is being dragged.
+
+		Args:
+			event: The motion event with the button held. tkinter.Event.
+
+		Returns:
+			None.
+		"""
+		if self._dragged_grace is not None:
+			self._drag_grace(event.x)
+
+	def _on_release(self, _event: tk.Event) -> None:
+		"""Store the value a drag of the grace slider ended on.
+
+		Args:
+			_event: The release event, which carries nothing needed here.
+				tkinter.Event.
+
+		Returns:
+			None.
+		"""
+		if self._dragged_grace is None:
+			return
+		grace = self._dragged_grace
+		self._dragged_grace = None
+		schedule = self._current.session_start
+		if grace != schedule.grace_minutes:
+			self._change_session_start(replace(schedule, grace_minutes=grace))
 
 	def _draw_account_row(self, y: float) -> float:
 		"""Draw the service of the tab, who is signed in to it, and the word that changes that.
@@ -1289,6 +1711,13 @@ class Panel:
 		self._control_photos.clear()
 		self._hovered = ""
 		self._switch = None
+		# A redraw may follow a change of palette or of scale, which every shade
+		# already rendered would be wrong for.
+		self._skeleton.clear()
+		self._skeleton_photos.clear()
+		self._session_switch = None
+		self._slider = None
+		self._grace_item = 0
 		self._link_caption_item = 0
 		self._scroll_offset = 0.0
 
@@ -1349,6 +1778,13 @@ class Panel:
 			self._set_view(USAGE_VIEW)
 		elif key == STARTUP_KEY:
 			self._toggle_startup()
+		elif key == SESSION_START_KEY:
+			self._toggle_session_start()
+		elif key in TIME_STEPS:
+			hours, minutes = TIME_STEPS[key]
+			self._change_session_start(stepped_time(self._current.session_start, hours, minutes, datetime.now()))
+		elif key == GRACE_KEY:
+			self._drag_grace(event.x)
 		elif key in (SIGN_IN_KEY, ACCOUNT_KEY):
 			# The panel is left open. A browser that opens takes the focus and
 			# dismisses it anyway, and one that does not leaves the panel in
@@ -1459,8 +1895,14 @@ class Panel:
 		if self._spinner_item:
 			self._spinner_angle = (self._spinner_angle - SPINNER_DEGREES_PER_SECOND * dt) % 360.0
 			self._canvas.itemconfigure(self._spinner_item, start=self._spinner_angle)
+		pulsing = bool(self._skeleton) and self._visible
+		if pulsing:
+			self._skeleton_clock += dt
+			level = self._skeleton_level()
+			for item, width, height in self._skeleton:
+				self._canvas.itemconfigure(item, image=self._skeleton_shade(width, height, level))
 		settling = any(not spring.settled for _bar, spring in self._bars)
-		return settling or bool(self._spinner_item)
+		return settling or bool(self._spinner_item) or pulsing
 
 	def _layout(self) -> None:
 		"""Size the panel to the reading and park it above the notification area.

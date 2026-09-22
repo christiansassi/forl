@@ -7,7 +7,8 @@ canvas as an image.
 
 The bars of the panel, the highlight behind a menu row and the track of a switch
 are the same rounded rectangle at three different radii, so they share one
-renderer. The tabs and the checkboxes add a border to it.
+renderer. The tabs and the checkboxes add a border to it, and the slider is a
+thin capsule with a round knob on it.
 """
 
 from __future__ import annotations
@@ -28,6 +29,12 @@ KNOB_INSET_RATIO = 0.085
 CHECKBOX_RADIUS_RATIO = 0.22
 CHECKBOX_STROKE_RATIO = 0.08
 CHECK_STROKE_RATIO = 0.13
+
+# The track of a slider and the dot at the middle of its knob, as shares of the
+# knob, which is as tall as the slider. The system slider is drawn this way: a
+# ring in the surface color around a dot in the accent.
+SLIDER_TRACK_RATIO = 0.2
+SLIDER_DOT_RATIO = 0.55
 
 
 def rounded_fill(width: int, height: int, color: str, radius: float) -> Image.Image:
@@ -174,3 +181,61 @@ def render_checkbox(size: int, checked: bool, accent: str, mark: str, surface: s
 	points = [(edge * 0.27, edge * 0.52), (edge * 0.43, edge * 0.68), (edge * 0.74, edge * 0.34)]
 	draw.line(points, fill=mark, width=max(1, int(round(edge * CHECK_STROKE_RATIO))), joint="curve")
 	return image.resize((size, size), Image.LANCZOS)
+
+
+def render_slider(
+	width: int,
+	height: int,
+	fraction: float,
+	track_color: str,
+	fill_color: str,
+	ring_color: str,
+) -> Image.Image:
+	"""Render a slider as an RGBA image, with its knob anywhere along the track.
+
+	The track is filled in the accent up to the knob and left plain after it,
+	and the knob is a ring around a dot in the accent, as the system slider is.
+
+	Args:
+		width: Width of the slider in pixels. int, 1 or more after rounding.
+		height: Height of the slider in pixels, which is the size of the knob.
+			int, 1 or more after rounding.
+		fraction: Where the knob sits, 0 at the left hand end and 1 at the
+			right. float, 0 to 1.
+		track_color: Color of the track past the knob as a "#rrggbb" string.
+			str, non-empty.
+		fill_color: Color of the track before the knob, and of the dot in the
+			knob, as a "#rrggbb" string. str, non-empty.
+		ring_color: Color of the ring around the dot as a "#rrggbb" string. str,
+			non-empty.
+
+	Returns:
+		PIL.Image.Image: The slider, mode "RGBA", on a transparent background.
+	"""
+	require_number_in_range(fraction, 0.0, 1.0, "fraction")
+	require_non_empty_str(track_color, "track_color")
+	require_non_empty_str(fill_color, "fill_color")
+	require_non_empty_str(ring_color, "ring_color")
+
+	width = max(1, int(round(width)))
+	height = max(1, int(round(height)))
+	scale = SUPERSAMPLE
+	image = Image.new("RGBA", (width * scale, height * scale), TRANSPARENT)
+	draw = ImageDraw.Draw(image)
+
+	diameter = height * scale
+	track = max(1.0, diameter * SLIDER_TRACK_RATIO)
+	middle = diameter / 2.0
+	# The knob's center travels between the two ends of the track, so the knob
+	# never hangs over either edge of the image.
+	center = middle + (width * scale - diameter) * fraction
+	top, bottom = middle - track / 2.0, middle + track / 2.0
+	# The track runs from edge to edge, so its ends line up with the text and
+	# the controls above it; the knob, whose center stops half a knob in, covers
+	# whichever end it is at.
+	draw.rounded_rectangle((0, top, width * scale - 1, bottom), radius=track / 2.0, fill=track_color)
+	draw.rounded_rectangle((0, top, center, bottom), radius=track / 2.0, fill=fill_color)
+	draw.ellipse((center - middle, 0, center + middle - 1, diameter - 1), fill=ring_color)
+	dot = diameter * SLIDER_DOT_RATIO / 2.0
+	draw.ellipse((center - dot, middle - dot, center + dot, middle + dot), fill=fill_color)
+	return image.resize((width, height), Image.LANCZOS)

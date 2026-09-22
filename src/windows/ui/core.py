@@ -18,17 +18,24 @@ signed in to is never sent to the browser on its own: the panel offers the
 sign-in and the user starts it. Only a sign-in that was working and has run out
 opens the browser by itself, once, so the reading comes back without a trip
 through the settings.
+
+A core also starts its service's five hour session at the time the user chose,
+by sending one message while the session reads 0 percent. The platform asks it
+to check every little while, and every reading asks as well.
 """
 
 from __future__ import annotations
 
+import sys
 import threading
 import webbrowser
 from dataclasses import replace
+from datetime import date, datetime
 from typing import Callable, NamedTuple
 
 from ..auth import store as credentials
 from ..providers import Provider
+from ..schedule.session_start import SessionStart, due_day
 from ..settings.store import Preferences, load as load_preferences, save as save_preferences
 from ..usage.errors import CredentialsError, UsageRequestError
 from ..usage.poller import PollResult, UsagePoller
@@ -107,6 +114,8 @@ class ProviderView(NamedTuple):
 			them, which is what the Show section lists. tuple of tuple of Metric.
 		displayed: Keys of the usages the tray icons show, which is what the
 			Show section checks. frozenset of str.
+		session_start: When the five hour session is started for the user.
+			SessionStart.
 	"""
 
 	provider: Provider
@@ -120,6 +129,7 @@ class ProviderView(NamedTuple):
 	account: str
 	groups: tuple[tuple[Metric, ...], ...]
 	displayed: frozenset[str]
+	session_start: SessionStart
 
 
 def quit_rows() -> tuple[MenuRow, ...]:
@@ -181,6 +191,9 @@ class WidgetCore:
 		# out must not put a browser window in front of them.
 		self._signed_out = False
 		self._refreshing = False
+		# Set while a session start message is in flight, so a check that comes
+		# round before it has been answered does not send a second one.
+		self._starting_session = False
 
 		self._preferences = load_preferences(provider.key)
 		views = self._preferences.views
@@ -305,6 +318,7 @@ class WidgetCore:
 			account=account,
 			groups=self.metric_groups(),
 			displayed=frozenset(self.displayed_keys()),
+			session_start=self._preferences.session_start,
 		)
 
 	def displayed_keys(self) -> tuple[str, ...]:
@@ -438,6 +452,88 @@ class WidgetCore:
 			self._selected = self._selected + (key,)
 		self.store(replace(self._preferences, views=self._selected))
 
+	def set_session_start(self, schedule: SessionStart) -> None:
+		"""Keep a new session start schedule and write it to disk.
+
+		Args:
+			schedule: The schedule as the user has now set it. SessionStart.
+
+		Returns:
+			None.
+		"""
+		require_type(schedule, SessionStart, "schedule")
+		self.store(replace(self._preferences, session_start=schedule))
+
+	def check_session_start(self, now: datetime | None = None) -> None:
+		"""Send the session start message if it is due and the session is at 0.
+
+		The reading it goes by must be recent: one left over from before the
+		machine slept says nothing about the session now, and the next reading
+		asks again.
+
+		Args:
+			now: The current local time, without a time zone, or None to read the
+				clock. datetime or None.
+
+		Returns:
+			None. The message is sent on a thread of its own.
+		"""
+		if now is None:
+			now = datetime.now()
+		require_type(now, datetime, "now")
+		if self._starting_session or self._snapshot is None or not self.signed_in:
+			return
+		day = due_day(self._preferences.session_start, now)
+		if day is None:
+			return
+		age = (now_utc() - self._snapshot.fetched_at).total_seconds()
+		if age > 2 * self._poll_seconds or round(self._snapshot.session.percent) != 0:
+			return
+		self._starting_session = True
+		threading.Thread(
+			target=self._run_session_start,
+			args=(day,),
+			name=f"forl-session-start-{self._provider.key}",
+			daemon=True,
+		).start()
+
+	def _run_session_start(self, day: date) -> None:
+		"""Send the session start message and report the outcome to the interface thread.
+
+		Args:
+			day: The day the message is sent for. date.
+
+		Returns:
+			None. Runs on its own thread.
+		"""
+		sent = True
+		try:
+			self._provider.start_session()
+		except (CredentialsError, UsageRequestError) as exc:
+			# Not put in front of the user: the next check inside the window
+			# tries again, and after the window the day is simply missed.
+			print(f"{self._provider.key}: session start failed: {exc}", file=sys.stderr)
+			sent = False
+		self._dispatch(lambda: self._finish_session_start(day, sent))
+
+	def _finish_session_start(self, day: date, sent: bool) -> None:
+		"""Record a sent message and take a reading that shows the new session.
+
+		Args:
+			day: The day the message was sent for. date.
+			sent: Whether it went through. bool.
+
+		Returns:
+			None. Runs on the interface thread.
+		"""
+		require_type(day, date, "day")
+		require_type(sent, bool, "sent")
+		self._starting_session = False
+		if not sent:
+			return
+		self.set_session_start(replace(self._preferences.session_start, last_sent=day))
+		self._poller.refresh()
+
 	def store(self, preferences: Preferences) -> None:
 		"""Keep a set of preferences, write it to disk and report the change.
 
@@ -553,6 +649,8 @@ class WidgetCore:
 			self._snapshot = result.snapshot
 		self._prompt_sign_in()
 		self._on_change()
+		if result.ok:
+			self.check_session_start()
 
 	def _prompt_sign_in(self) -> None:
 		"""Put the user in front of the sign-in when a stored one has run out.

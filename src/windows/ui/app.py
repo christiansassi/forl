@@ -45,6 +45,10 @@ from .panel import USAGE_VIEW, Panel
 from .tray import TrayIcons
 
 DRAIN_INTERVAL_MS = 120
+# How often each service is asked whether its session start is due. Well under a
+# minute, so a schedule with no grace still has its one minute checked, which a
+# reading once a minute, a little late each time, could step over.
+SESSION_START_CHECK_MS = 20_000
 
 # The icon shown while no usage icon is, drawn from the app's own artwork.
 APP_ICON_NAME = "forl"
@@ -93,6 +97,7 @@ class WidgetApp:
 		enable_dpi_awareness()
 		self._events: queue.Queue[Callable[[], None]] = queue.Queue()
 		self._drain_job: str | None = None
+		self._session_start_job: str | None = None
 		# Set once shutdown starts, so a drain that is running the shutdown does
 		# not schedule itself again on a window about to be destroyed.
 		self._stopping = False
@@ -125,6 +130,7 @@ class WidgetApp:
 			on_sign_out=lambda key: self._core(key).sign_out(),
 			on_open_sign_in=lambda key: self._core(key).open_sign_in_link(),
 			on_toggle_metric=lambda key, metric: self._core(key).toggle_metric(metric),
+			on_session_start_change=lambda key, schedule: self._core(key).set_session_start(schedule),
 		)
 		self._panel.set_startup(self._start_on_startup)
 		self._menu = TrayMenu(self._root, on_choose=self._choose)
@@ -215,6 +221,19 @@ class WidgetApp:
 		finally:
 			if not self._stopping:
 				self._drain_job = self._root.after(DRAIN_INTERVAL_MS, self._drain_events)
+
+	def _check_session_starts(self) -> None:
+		"""Ask every service whether its session start is due, then reschedule.
+
+		Returns:
+			None.
+		"""
+		try:
+			for core in self._cores.values():
+				core.check_session_start()
+		finally:
+			if not self._stopping:
+				self._session_start_job = self._root.after(SESSION_START_CHECK_MS, self._check_session_starts)
 
 	def _set_startup(self, enabled: bool) -> None:
 		"""Store whether the widget starts with Windows, and make it so.
@@ -317,6 +336,9 @@ class WidgetApp:
 		if self._drain_job is not None:
 			self._root.after_cancel(self._drain_job)
 			self._drain_job = None
+		if self._session_start_job is not None:
+			self._root.after_cancel(self._session_start_job)
+			self._session_start_job = None
 		self._menu.hide()
 		self._panel.hide()
 		for core in self._cores.values():
@@ -335,6 +357,7 @@ class WidgetApp:
 		for tray in (self._app_icon, *self._trays.values()):
 			tray.start()
 		self._drain_job = self._root.after(DRAIN_INTERVAL_MS, self._drain_events)
+		self._session_start_job = self._root.after(SESSION_START_CHECK_MS, self._check_session_starts)
 		for core in self._cores.values():
 			core.start()
 		if not any(core.signed_in for core in self._cores.values()):

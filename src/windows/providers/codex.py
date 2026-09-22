@@ -10,6 +10,12 @@ for this provider.
 
 Every usage request also names the account, which the sign-in reports in the
 claims of the identity token rather than as a field of its own.
+
+Starting a session is one message to the smallest model the account may use.
+Which models those are changes with the plan and over time, so the list is asked
+for at the time rather than written down here, and the message carries the
+instructions the list gives for that model: the endpoint refuses a message
+whose instructions are not the ones it expects.
 """
 
 from __future__ import annotations
@@ -20,7 +26,8 @@ from typing import Any, Callable
 from ..auth import jwt, oauth, store
 from ..auth.oauth import OAuthClient
 from ..usage.errors import CredentialsError, UsageAuthError, UsageRequestError
-from ..usage.http import fetch_json
+from ..schedule.session_start import MESSAGE_TEXT
+from ..usage.http import fetch_json, post_json
 from ..usage.snapshot import (
 	SESSION_KEY,
 	SESSION_LABEL,
@@ -37,6 +44,16 @@ KEY = "chatgpt"
 LABEL = "ChatGPT"
 
 USAGE_URL = "https://chatgpt.com/backend-api/codex/usage"
+MODELS_URL = "https://chatgpt.com/backend-api/codex/models"
+RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses"
+# The model list is filtered by the version of the client asking, and a model
+# newer than that version is left out. No version of that client is being run
+# here, so one far ahead of any release is named, which leaves nothing out.
+CLIENT_VERSION = "99.0.0"
+# Taken when the list cannot be had or names nothing usable.
+FALLBACK_MODEL = "gpt-5.4-mini"
+LISTED_VISIBILITY = "list"
+SMALL_MODEL_MARK = "mini"
 USER_AGENT = "chatgpt-usage-widget/1.0"
 ORIGINATOR = "codex_cli_rs"
 
@@ -232,6 +249,114 @@ def parse(document: dict[str, Any]) -> UsageSnapshot:
 	)
 
 
+def _headers(token: str, account_id: str, accept: str) -> dict[str, str]:
+	"""Return the headers every authenticated ChatGPT request carries.
+
+	Args:
+		token: The bearer token to send. str, non-empty.
+		account_id: The ChatGPT account to make the request against, empty when
+			the sign-in named none. str.
+		accept: The media type asked for, such as "application/json". str,
+			non-empty.
+
+	Returns:
+		dict[str, str]: The headers, ready to pass to the transport.
+	"""
+	headers = {
+		"Authorization": f"Bearer {token}",
+		"Accept": accept,
+		"User-Agent": USER_AGENT,
+		"originator": ORIGINATOR,
+	}
+	if account_id:
+		headers["chatgpt-account-id"] = account_id
+	return headers
+
+
+def _smallest_model(document: dict[str, Any]) -> tuple[str, str]:
+	"""Return the smallest model a model list offers, and its instructions.
+
+	A model named as a small one is taken first. Otherwise the one the list
+	ranks last is, since the list puts its largest models first.
+
+	Args:
+		document: The decoded model list. dict.
+
+	Returns:
+		tuple[str, str]: The model's name and the instructions to send with it,
+		or FALLBACK_MODEL and no instructions when the list names nothing usable.
+	"""
+	models = document.get("models")
+	listed = [
+		model
+		for model in (models if isinstance(models, list) else [])
+		if isinstance(model, dict)
+		and isinstance(model.get("slug"), str)
+		and model["slug"].strip()
+		and model.get("visibility", LISTED_VISIBILITY) == LISTED_VISIBILITY
+	]
+	if not listed:
+		return (FALLBACK_MODEL, "")
+	small = [model for model in listed if SMALL_MODEL_MARK in model["slug"]]
+
+	def rank(model: dict[str, Any]) -> float:
+		"""Return where the list ranks a model, larger for further down.
+
+		Args:
+			model: One entry of the model list. dict.
+
+		Returns:
+			float: The model's priority, 0 when it carries none.
+		"""
+		priority = model.get("priority")
+		return float(priority) if isinstance(priority, (int, float)) and not isinstance(priority, bool) else 0.0
+
+	chosen = max(small or listed, key=rank)
+	instructions = chosen.get("base_instructions")
+	return (chosen["slug"], instructions if isinstance(instructions, str) else "")
+
+
+def start_session() -> None:
+	"""Send one short message, which starts the five hour session if none is running.
+
+	Returns:
+		None.
+
+	Raises:
+		CredentialsError: When there is no sign-in to send with.
+		UsageAuthError: When the sign-in was refused.
+		UsageRequestError: When the endpoint could not be reached.
+	"""
+	token, account_id = _load_login()
+	try:
+		model, instructions = _smallest_model(
+			fetch_json(f"{MODELS_URL}?client_version={CLIENT_VERSION}", _headers(token, account_id, "application/json"))
+		)
+	except UsageRequestError:
+		model, instructions = FALLBACK_MODEL, ""
+	post_json(
+		RESPONSES_URL,
+		{
+			"model": model,
+			"instructions": instructions,
+			"input": [
+				{
+					"type": "message",
+					"role": "user",
+					"content": [{"type": "input_text", "text": MESSAGE_TEXT}],
+				}
+			],
+			"tools": [],
+			"tool_choice": "auto",
+			"parallel_tool_calls": False,
+			# The endpoint serves nothing but streams, and keeps nothing it is sent.
+			"store": False,
+			"stream": True,
+		},
+		_headers(token, account_id, "text/event-stream"),
+	)
+
+
 def read() -> UsageSnapshot:
 	"""Take one ChatGPT usage reading.
 
@@ -252,14 +377,7 @@ def read() -> UsageSnapshot:
 			token that has not expired.
 	"""
 	token, account_id = _load_login()
-	headers = {
-		"Authorization": f"Bearer {token}",
-		"Accept": "application/json",
-		"User-Agent": USER_AGENT,
-		"originator": ORIGINATOR,
-	}
-	if account_id:
-		headers["chatgpt-account-id"] = account_id
+	headers = _headers(token, account_id, "application/json")
 
 	for attempt in range(AUTH_RETRY_ATTEMPTS):
 		if attempt:
