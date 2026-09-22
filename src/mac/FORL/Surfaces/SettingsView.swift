@@ -56,6 +56,15 @@ struct SettingsView: View {
 			}
 			.padding(.bottom, 16)
 
+			if let state = store.state(for: selectedProviderKey) {
+				Text("Account")
+					.font(.system(size: 11, weight: .semibold))
+					.foregroundStyle(.secondary)
+					.padding(.bottom, 8)
+				AccountRow(state: state, store: store)
+				Spacer().frame(height: 22)
+			}
+
 			Text("General")
 				.font(.system(size: 11, weight: .semibold))
 				.foregroundStyle(.secondary)
@@ -81,13 +90,13 @@ struct SettingsView: View {
 					.padding(.top, 10)
 			}
 
-			if let state = store.state(for: selectedProviderKey) {
+			if let state = store.state(for: selectedProviderKey), let snapshot = state.snapshot {
 				Spacer().frame(height: 22)
-				Text("Account")
+				Text("Show")
 					.font(.system(size: 11, weight: .semibold))
 					.foregroundStyle(.secondary)
-					.padding(.bottom, 8)
-				AccountRow(state: state, store: store)
+					.padding(.bottom, 10)
+				ShowSection(state: state, snapshot: snapshot, store: store)
 			}
 		}
 		.toggleStyle(.switch)
@@ -114,7 +123,7 @@ struct SettingsView: View {
 	}
 }
 
-/// One service: who is signed in, and which of its usages are shown.
+/// One service, and who is signed in to it.
 private struct AccountRow: View {
 	/// The provider to draw.
 	var state: ProviderState
@@ -148,28 +157,34 @@ private struct AccountRow: View {
 				.font(.system(size: 11))
 				.foregroundStyle(.secondary)
 				.padding(.top, 2)
+		}
+	}
+}
 
-			if let snapshot = state.snapshot {
-				Spacer().frame(height: 22)
-				Text("Show")
-					.font(.system(size: 11, weight: .semibold))
-					.foregroundStyle(.secondary)
-					.padding(.bottom, 10)
+/// Which of one service's usages are shown in the menu bar.
+private struct ShowSection: View {
+	/// The provider to draw.
+	var state: ProviderState
+	/// The reading that names the usages there are.
+	var snapshot: UsageSnapshot
+	/// Everything the app is showing, for the selection.
+	@Bindable var store: UsageStore
 
-				ForEach(snapshot.metrics) { metric in
-					Toggle(metric.label, isOn: Binding(
-						get: { store.preferences.selected(for: state.provider.key).contains(metric.key) },
-						set: { _ in
-							store.preferences.toggle(metric.key, for: state.provider.key)
-							store.publish()
-						}
-					))
-					.toggleStyle(.checkbox)
-					.tint(state.provider.accent)
-					.font(.system(size: 12))
-					.frame(minHeight: 20, alignment: .leading)
-					.padding(.vertical, 1)
-				}
+	var body: some View {
+		VStack(alignment: .leading, spacing: 0) {
+			ForEach(snapshot.metrics) { metric in
+				Toggle(metric.label, isOn: Binding(
+					get: { store.preferences.selected(for: state.provider.key).contains(metric.key) },
+					set: { _ in
+						store.preferences.toggle(metric.key, for: state.provider.key)
+						store.publish()
+					}
+				))
+				.toggleStyle(.checkbox)
+				.tint(state.provider.accent)
+				.font(.system(size: 12))
+				.frame(minHeight: 20, alignment: .leading)
+				.padding(.vertical, 1)
 			}
 		}
 	}
@@ -178,7 +193,7 @@ private struct AccountRow: View {
 /// When the service's session is started on the user's behalf.
 ///
 /// The same setting the Windows widget has: a switch, and while it is on, the
-/// days of the week, the time of day and how late the message may still go out.
+/// time of day, how late the message may still go out, and the days of the week.
 private struct SessionStartSection: View {
 	/// The provider the schedule belongs to.
 	var state: ProviderState
@@ -203,18 +218,6 @@ private struct SessionStartSection: View {
 			}
 
 			if schedule.enabled {
-				HStack(spacing: 0) {
-					ForEach(Array(zip(SessionStart.allWeekdays, weekdayInitials)), id: \.0) { weekday, initial in
-						if weekday > 1 {
-							Spacer(minLength: 0)
-						}
-						WeekdayButton(initial: initial, chosen: schedule.weekdays.contains(weekday), accent: accent) {
-							store.preferences.setSessionStart(schedule.toggledWeekday(weekday), for: key)
-						}
-					}
-				}
-				.padding(.top, 10)
-
 				HStack(spacing: 2) {
 					Text("Time")
 					Spacer()
@@ -250,6 +253,18 @@ private struct SessionStartSection: View {
 				.controlSize(.small)
 				.tint(accent)
 				.padding(.top, 6)
+
+				HStack(spacing: 0) {
+					ForEach(Array(zip(SessionStart.allWeekdays, weekdayInitials)), id: \.0) { weekday, initial in
+						if weekday > 1 {
+							Spacer(minLength: 0)
+						}
+						WeekdayButton(initial: initial, chosen: schedule.weekdays.contains(weekday), accent: accent) {
+							store.preferences.setSessionStart(schedule.toggledWeekday(weekday), for: key)
+						}
+					}
+				}
+				.padding(.top, 10)
 			}
 		}
 	}

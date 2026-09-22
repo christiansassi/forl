@@ -22,8 +22,8 @@ and the two are drawn on the same canvas rather than in two windows, so the
 panel keeps its position and its chrome across the change. The window takes
 whichever of the two views is taller, which is the reading once one has been
 taken, so opening the settings does not resize it. The settings are laid out as
-the Mac app's are: what applies to the whole widget, who is signed in to the
-service of the tab, when its five hour usage window is started for the user,
+the Mac app's are: who is signed in to the service of the tab, what the app
+does on its own, which includes starting the service's five hour usage window,
 and which of its usages the tray icons show.
 
 Colors follow the light or dark mode chosen for applications in Windows, asked
@@ -79,7 +79,7 @@ from ..render.theme import (
 	usage_hex,
 )
 from ..usage.snapshot import PRODUCT_KEY_PREFIX
-from ..validation import require_member, require_non_empty_str, require_type
+from ..validation import require_member, require_non_empty_str, require_number_in_range, require_type
 from .animation import Spring, Ticker
 from .capsule_bar import CapsuleBar
 from .core import LOADING_TEXT, ProviderView
@@ -206,6 +206,12 @@ WEEKDAY_SIZE = 28
 WEEKDAY_STROKE = 1
 SLIDER_HEIGHT = 18
 SLIDER_GAP = 4
+# Space between the capitals of one row of the session start and those of the
+# next, the same all the way down, as the Mac app spaces them evenly.
+SESSION_ROW_GAP = 14
+# The days are spaced from the knob of the slider above them, the lowest thing
+# that row draws, by a little less, which reads as the same space.
+DAYS_GAP = 11
 SLIDER_RING_OPACITY = 0.9
 SLIDER_TRACK_OPACITY = 0.25
 
@@ -1150,10 +1156,11 @@ class Panel:
 	def _draw_settings(self, y: float) -> float:
 		"""Draw every setting, in the groups the Mac app puts them in.
 
-		General holds what applies to the whole widget, Account who is signed in
-		to the service of the tab, Usage window when its five hour window is
-		started for the user, and Show which of its usages the tray icons show,
-		once there is a reading to say what those are.
+		Account comes first, with who is signed in to the service of the tab,
+		then General, with what the app does on its own: starting at login and
+		starting the service's five hour window. Show, last, lists which of its
+		usages the tray icons show, once there is a reading to say what those
+		are.
 
 		Args:
 			y: Vertical cursor in device pixels. float.
@@ -1161,13 +1168,13 @@ class Panel:
 		Returns:
 			float: The vertical cursor after the last setting.
 		"""
-		y = self._draw_section_label(GENERAL_TITLE, y, SECTION_LABEL_GAP)
+		y = self._draw_section_label(ACCOUNT_TITLE, y, SECTION_LABEL_GAP)
+		y = self._draw_account_row(y)
+		y = self._draw_section_label(GENERAL_TITLE, y + self._unit(SETTINGS_SECTION_GAP), SECTION_LABEL_GAP)
 		y = self._draw_startup_row(y)
 		# Beside the login switch rather than a group of its own: both are about
 		# what the app does on its own. It belongs to the service of the tab.
 		y = self._draw_session_start(y + self._unit(SETTINGS_ROW_GAP) / 2.0)
-		y = self._draw_section_label(ACCOUNT_TITLE, y + self._unit(SETTINGS_SECTION_GAP), SECTION_LABEL_GAP)
-		y = self._draw_account_row(y)
 		if self._current.groups:
 			y = self._draw_section_label(SHOW_TITLE, y + self._unit(SETTINGS_SECTION_GAP), SHOW_LABEL_GAP)
 			y = self._draw_show_rows(y)
@@ -1231,7 +1238,13 @@ class Panel:
 				y += height
 		return y
 
-	def _draw_settings_label(self, label: str, y: float, control_height: float) -> tuple[float, float]:
+	def _draw_settings_label(
+		self,
+		label: str,
+		y: float,
+		control_height: float,
+		min_height: float = SETTINGS_ROW_MIN_HEIGHT,
+	) -> tuple[float, float]:
 		"""Draw the name of one setting and return the line its control sits on.
 
 		The name and its control are centered on one line, the way a usage row
@@ -1245,6 +1258,9 @@ class Panel:
 			y: Vertical cursor in device pixels. float.
 			control_height: Height of the control going beside it, in device
 				pixels. float.
+			min_height: Smallest height the row may take, in layout units. A row
+				whose control is text as well takes 0, so the row is its line and
+				the space around it is the caller's. float, 0 or more.
 
 		Returns:
 			tuple[float, float]: The middle of the row and its height, both in
@@ -1252,12 +1268,13 @@ class Panel:
 		"""
 		require_non_empty_str(label, "label")
 		require_type(control_height, (int, float), "control_height")
+		require_number_in_range(min_height, 0.0, 1000.0, "min_height")
 
 		name = self._text((self._unit(PANEL_PAD), y), label, "row", self._palette.label_primary)
 		height = max(
 			self._canvas.bbox(name)[3] - y,
 			float(control_height),
-			self._unit(SETTINGS_ROW_MIN_HEIGHT),
+			self._unit(min_height),
 		)
 		middle = y + height / 2.0
 		self._canvas.move(name, 0, middle - self._text_middle(y, "row"))
@@ -1308,7 +1325,7 @@ class Panel:
 		return y
 
 	def _draw_session_start(self, y: float) -> float:
-		"""Draw the session start switch and, while it is on, the time and the grace.
+		"""Draw the session start switch and, while it is on, the time, the grace and the days.
 
 		Args:
 			y: Vertical cursor in device pixels. float.
@@ -1323,9 +1340,29 @@ class Panel:
 		if not schedule.enabled:
 			return y
 
-		y = self._draw_weekday_row(schedule, y + self._unit(SETTINGS_ROW_GAP) / 2.0) + self._unit(SETTINGS_ROW_GAP)
-		y = self._draw_time_row(schedule, y) + self._unit(SETTINGS_ROW_GAP)
-		return self._draw_grace_row(schedule, y)
+		gap = self._unit(SESSION_ROW_GAP)
+		time_top = self._row_top_for_capitals(y + self._unit(SETTINGS_ROW_GAP) / 2.0)
+		self._draw_time_row(schedule, time_top)
+		baseline = time_top + self._ascent("row")
+		slider_bottom = self._draw_grace_row(schedule, self._row_top_for_capitals(baseline + gap))
+		return self._draw_weekday_row(schedule, slider_bottom + self._unit(DAYS_GAP))
+
+	def _row_top_for_capitals(self, capitals_top: float) -> float:
+		"""Return where a line of row text must be anchored for its capitals to start at a height.
+
+		Rows are spaced by what can be seen of them, the tops of the capitals,
+		rather than by the line box Tk reports, which has room above them for
+		accents and so leaves every gap looking larger than it was set.
+
+		Args:
+			capitals_top: Where the tops of the capitals should sit, in device
+				pixels. float.
+
+		Returns:
+			float: The top to anchor the text at, in device pixels.
+		"""
+		require_number_in_range(capitals_top, -1e9, 1e9, "capitals_top")
+		return capitals_top - (self._ascent("row") - self._font_pixels("row") * CAP_HEIGHT_RATIO)
 
 	def _draw_weekday_row(self, schedule: SessionStart, y: float) -> float:
 		"""Draw the days of the week the session is started on, one circle each.
@@ -1405,7 +1442,7 @@ class Panel:
 			float: The vertical cursor at the bottom of the row.
 		"""
 		require_type(schedule, SessionStart, "schedule")
-		middle, height = self._draw_settings_label(TIME_LABEL, y, 0.0)
+		middle, height = self._draw_settings_label(TIME_LABEL, y, 0.0, min_height=0.0)
 		hour, minute = format_time(schedule.minute_of_day)
 		step_gap = self._unit(TIME_STEP_GAP)
 		field_gap = self._unit(TIME_FIELD_GAP)
@@ -1472,7 +1509,7 @@ class Panel:
 		pad = self._unit(PANEL_PAD)
 		right = self._unit(PANEL_WIDTH) - pad
 		grace = self._dragged_grace if self._dragged_grace is not None else schedule.grace_minutes
-		middle, height = self._draw_settings_label(GRACE_LABEL, y, 0.0)
+		middle, height = self._draw_settings_label(GRACE_LABEL, y, 0.0, min_height=0.0)
 		self._grace_item = self._text(
 			(right, middle),
 			GRACE_VALUE.format(minutes=grace),
