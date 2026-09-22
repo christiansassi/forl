@@ -36,6 +36,14 @@ protocol Provider: Sendable {
 	/// - Throws: `UsageError` when the sign-in cannot be used or the endpoint
 	///   cannot be reached.
 	func read() async throws -> UsageSnapshot
+
+	/// Send one short message, which starts the five hour session if none is
+	/// running.
+	///
+	/// - Returns: Nothing, once the service has accepted the message.
+	/// - Throws: `UsageError` when the sign-in cannot be used or the endpoint
+	///   cannot be reached.
+	func startSession() async throws
 }
 
 extension Provider {

@@ -41,12 +41,14 @@
 		88E9C107DF3129DCF6838D05 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 471654A02F67A9B0C79F2706 /* MenuBarController.swift */; };
 		98ABDA7F096CBDE32D63D85C /* UsageWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C2817C2C3B3BAE54912E34F /* UsageWidgets.swift */; };
 		9B458F5DAFC804ADA3650C82 /* ProviderMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC9C867F04BFBEC29AEC1FA0 /* ProviderMark.swift */; };
+		9FEFBD9A54F73A98B4B98933 /* SessionStart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 062686C525E1FD01715793E0 /* SessionStart.swift */; };
 		A24C1C56386F4BFBFF682F6E /* WidgetChoices.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF5B474142D4EAAA644F6BC3 /* WidgetChoices.swift */; };
 		A950CE49B7CC524C572B8089 /* Preferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1612B88DE0A4F3E5215AAC53 /* Preferences.swift */; };
 		ABB30ECD1216AF6DDFB9C0FD /* PanelWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22BB7008B91D7B59F744E3FB /* PanelWindow.swift */; };
 		AFF5F8FA41BC6415D7A78DCE /* ControlSymbols.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0F16D6629873683464A8ADEC /* ControlSymbols.xcassets */; };
 		B3E9355E96ADB6BB117AE8D6 /* ProviderIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 444041CE48FAD3185005E089 /* ProviderIdentity.swift */; };
 		B5C96FE742D9F86D1F5DAB90 /* UsageBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABFC2D09EF24209B2EDBC12A /* UsageBar.swift */; };
+		BC68090D3BECAE6B03EF1820 /* SessionStart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 062686C525E1FD01715793E0 /* SessionStart.swift */; };
 		BDCDE16E94DCB6BB92E2B1F2 /* DialGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AC6B0CED0218263B953FFAC /* DialGeometry.swift */; };
 		BF5614244B890AA756EAE41A /* ProviderState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2D4C4C54069C866BA4A5370 /* ProviderState.swift */; };
 		C2BD3F124E693E41D99B3B60 /* FORLWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CC3C7ED8EDB2B193F2ED702D /* FORLWidgets.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -89,6 +91,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		062686C525E1FD01715793E0 /* SessionStart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStart.swift; sourceTree = "<group>"; };
 		0BDB9309FC8EE8ADCC2D5E15 /* FORLApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FORLApp.swift; sourceTree = "<group>"; };
 		0F16D6629873683464A8ADEC /* ControlSymbols.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = ControlSymbols.xcassets; sourceTree = "<group>"; };
 		1612B88DE0A4F3E5215AAC53 /* Preferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Preferences.swift; sourceTree = "<group>"; };
@@ -237,6 +240,7 @@
 			isa = PBXGroup;
 			children = (
 				1612B88DE0A4F3E5215AAC53 /* Preferences.swift */,
+				062686C525E1FD01715793E0 /* SessionStart.swift */,
 				D57E8852629FDFDD168C3BC6 /* SharedStore.swift */,
 				DF5B474142D4EAAA644F6BC3 /* WidgetChoices.swift */,
 			);
@@ -449,6 +453,7 @@
 				1664A0CBAE29AF14677FDE21 /* ProviderIdentity.swift in Sources */,
 				9B458F5DAFC804ADA3650C82 /* ProviderMark.swift in Sources */,
 				BF5614244B890AA756EAE41A /* ProviderState.swift in Sources */,
+				BC68090D3BECAE6B03EF1820 /* SessionStart.swift in Sources */,
 				7FC305435C7876BEF1FC9D82 /* SettingsView.swift in Sources */,
 				0000BD05A8EA051C6C461AB7 /* SharedStore.swift in Sources */,
 				55BD6D076B226FB3A107B85A /* Skeleton.swift in Sources */,
@@ -476,6 +481,7 @@
 				B3E9355E96ADB6BB117AE8D6 /* ProviderIdentity.swift in Sources */,
 				0FA0C3649EB2CDB75B311233 /* ProviderMark.swift in Sources */,
 				6FE1D29FE1944BB29D65F7F5 /* SelectService.swift in Sources */,
+				9FEFBD9A54F73A98B4B98933 /* SessionStart.swift in Sources */,
 				68E3059AF7A8C32100B85C70 /* SharedStore.swift in Sources */,
 				10ED1276779D8E147D51A1C4 /* Skeleton.swift in Sources */,
 				6A22F266718723DBB74C7E4C /* Theme.swift in Sources */,

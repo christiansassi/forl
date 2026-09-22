@@ -25,11 +25,16 @@ final class Preferences {
 	var selection: [String: [String]] {
 		didSet { defaults.set(selection, forKey: Key.selection) }
 	}
+	/// When each service's session is started for the user, keyed by provider.
+	private(set) var sessionStarts: [String: SessionStart] {
+		didSet { defaults.set(try? JSONEncoder().encode(sessionStarts), forKey: Key.sessionStarts) }
+	}
 
 	/// The names the values are stored under.
 	private enum Key {
 		static let startAtLogin = "startAtLogin"
 		static let selection = "selection"
+		static let sessionStarts = "sessionStarts"
 	}
 
 	/// Read the stored preferences, falling back to the defaults.
@@ -41,6 +46,26 @@ final class Preferences {
 		self.defaults = defaults
 		startAtLogin = defaults.object(forKey: Key.startAtLogin) as? Bool ?? false
 		selection = defaults.object(forKey: Key.selection) as? [String: [String]] ?? [:]
+		sessionStarts = defaults.data(forKey: Key.sessionStarts)
+			.flatMap { try? JSONDecoder().decode([String: SessionStart].self, from: $0) } ?? [:]
+	}
+
+	/// Return when one service's session is started for the user.
+	///
+	/// - Parameter providerKey: Key of the provider, such as "claude".
+	/// - Returns: The stored schedule, or the default one, which is off.
+	func sessionStart(for providerKey: String) -> SessionStart {
+		sessionStarts[providerKey] ?? SessionStart()
+	}
+
+	/// Keep a new session start schedule for one service.
+	///
+	/// - Parameters:
+	///   - schedule: The schedule as it now stands.
+	///   - providerKey: Key of the provider, such as "claude".
+	/// - Returns: Nothing.
+	func setSessionStart(_ schedule: SessionStart, for providerKey: String) {
+		sessionStarts[providerKey] = schedule
 	}
 
 	/// Return the metric keys the user chose for one provider.

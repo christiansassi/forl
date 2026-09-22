@@ -24,6 +24,11 @@ struct ClaudeProvider: Provider {
 
 	private static let usageURL = URL(string: "https://api.anthropic.com/api/oauth/usage")!
 	private static let profileURL = URL(string: "https://api.anthropic.com/api/oauth/profile")!
+	private static let messagesURL = URL(string: "https://api.anthropic.com/v1/messages")!
+	private static let apiVersion = "2023-06-01"
+	/// The smallest model, since the message that starts a session is answered
+	/// with a single token nobody reads.
+	private static let sessionStartModel = "claude-haiku-4-5"
 	private static let userAgent = "forl/1.0"
 	private static let betaHeader = "oauth-2025-04-20"
 
@@ -117,6 +122,27 @@ struct ClaudeProvider: Provider {
 		}
 
 		return Self.parse(try await usageAnswer, plan: plan)
+	}
+
+	/// Send one short message, which starts the five hour session if none is
+	/// running.
+	///
+	/// - Returns: Nothing, once the message has been accepted.
+	/// - Throws: `UsageError` when the sign-in cannot be used or the endpoint
+	///   cannot be reached.
+	func startSession() async throws {
+		let tokens = try await OAuth.usable(client: oauth)
+		var headers = Self.headers(token: tokens.accessToken)
+		headers["anthropic-version"] = Self.apiVersion
+		try await HTTP.postJSON(
+			url: Self.messagesURL,
+			body: [
+				"model": Self.sessionStartModel,
+				"max_tokens": 1,
+				"messages": [["role": "user", "content": SessionStart.messageText]],
+			],
+			headers: headers
+		)
 	}
 
 	/// Return the headers every authenticated Claude request carries.

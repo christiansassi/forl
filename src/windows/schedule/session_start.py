@@ -5,8 +5,8 @@ has not started by the time the user sits down starts then, and ends five hours
 later whatever the user had planned. Sending one short message at a chosen time
 starts it earlier, so it resets earlier.
 
-The message is sent once a day, at the chosen time or up to a chosen number of
-minutes after it, which is what lets a machine that was asleep at the time, or a
+The message is sent once a day, on the days of the week the user picked, at the
+chosen time or up to a chosen number of minutes after it, which is what lets a machine that was asleep at the time, or a
 reading that was late, still count. It is sent only while the session reads 0
 percent, since a session already running cannot be started again.
 
@@ -43,6 +43,10 @@ MINUTE_FIELD = "minute_of_day"
 GRACE_FIELD = "grace_minutes"
 STARTS_ON_FIELD = "starts_on"
 LAST_SENT_FIELD = "last_sent"
+WEEKDAYS_FIELD = "weekdays"
+
+# The days of the week, numbered as ISO numbers them: Monday is 1 and Sunday 7.
+ALL_WEEKDAYS = (1, 2, 3, 4, 5, 6, 7)
 
 
 @dataclass(frozen=True)
@@ -60,6 +64,8 @@ class SessionStart:
 			had already gone. date or None while it has never been on.
 		last_sent: Day the last message was sent for, so a day gets one message
 			however many readings fall inside its window. date or None.
+		weekdays: The days of the week it runs on, as ISO numbers, Monday 1 to
+			Sunday 7, in order and each once. tuple of int; empty runs on none.
 	"""
 
 	enabled: bool = False
@@ -67,6 +73,7 @@ class SessionStart:
 	grace_minutes: int = DEFAULT_GRACE_MINUTES
 	starts_on: date | None = None
 	last_sent: date | None = None
+	weekdays: tuple[int, ...] = ALL_WEEKDAYS
 
 	def __post_init__(self) -> None:
 		"""Check every field, so a schedule that exists is one that can be acted on.
@@ -84,6 +91,11 @@ class SessionStart:
 		for name, value in (("starts_on", self.starts_on), ("last_sent", self.last_sent)):
 			if value is not None:
 				require_type(value, date, name)
+		require_type(self.weekdays, tuple, "weekdays")
+		for weekday in self.weekdays:
+			require_int_in_range(weekday, 1, 7, "weekdays")
+		if list(self.weekdays) != sorted(set(self.weekdays)):
+			raise ValueError(f"weekdays must be in order and each once, got {self.weekdays}")
 
 
 def _first_day(minute_of_day: int, now: datetime) -> date:
@@ -158,6 +170,23 @@ def stepped_time(schedule: SessionStart, hours: int, minutes: int, now: datetime
 	return replace(schedule, minute_of_day=minute_of_day, starts_on=_first_day(minute_of_day, now))
 
 
+def toggled_weekday(schedule: SessionStart, weekday: int) -> SessionStart:
+	"""Return a schedule with one day of the week added to it or taken away.
+
+	Args:
+		schedule: The schedule as it stands. SessionStart.
+		weekday: The day, as an ISO number, Monday 1 to Sunday 7. int.
+
+	Returns:
+		SessionStart: The schedule running on that day when it did not, and not
+		running on it when it did.
+	"""
+	require_type(schedule, SessionStart, "schedule")
+	require_int_in_range(weekday, 1, 7, "weekday")
+	days = set(schedule.weekdays) ^ {weekday}
+	return replace(schedule, weekdays=tuple(sorted(days)))
+
+
 def due_day(schedule: SessionStart, now: datetime) -> date | None:
 	"""Return the day a message is due for at a given moment, if one is.
 
@@ -171,7 +200,8 @@ def due_day(schedule: SessionStart, now: datetime) -> date | None:
 	Returns:
 		date or None: The day whose window the moment falls in, which is what to
 		record as sent. None when the schedule is off, has not reached its first
-		day, has already sent for that day, or the moment is outside every window.
+		day, does not run on that day of the week, has already sent for that day,
+		or the moment is outside every window.
 	"""
 	require_type(schedule, SessionStart, "schedule")
 	require_type(now, datetime, "now")
@@ -182,7 +212,12 @@ def due_day(schedule: SessionStart, now: datetime) -> date | None:
 		# The grace counts whole minutes, so with 5 minutes 8:05 is still in and
 		# with none the chosen minute itself is.
 		closes = opens + timedelta(minutes=schedule.grace_minutes + 1)
-		if opens <= now < closes and day >= schedule.starts_on and day != schedule.last_sent:
+		if (
+			opens <= now < closes
+			and day >= schedule.starts_on
+			and day != schedule.last_sent
+			and day.isoweekday() in schedule.weekdays
+		):
 			return day
 	return None
 
@@ -203,6 +238,7 @@ def to_dict(schedule: SessionStart) -> dict[str, Any]:
 		GRACE_FIELD: schedule.grace_minutes,
 		STARTS_ON_FIELD: schedule.starts_on.isoformat() if schedule.starts_on else None,
 		LAST_SENT_FIELD: schedule.last_sent.isoformat() if schedule.last_sent else None,
+		WEEKDAYS_FIELD: list(schedule.weekdays),
 	}
 
 
@@ -264,7 +300,28 @@ def from_dict(section: Any) -> SessionStart:
 		grace_minutes=grace if grace_ok else DEFAULT_GRACE_MINUTES,
 		starts_on=starts_on,
 		last_sent=_date_field(section, LAST_SENT_FIELD),
+		weekdays=_weekdays_field(section),
 	)
+
+
+def _weekdays_field(section: dict[str, Any]) -> tuple[int, ...]:
+	"""Return the stored days of the week, or every day when none were stored.
+
+	A list that was stored empty is kept empty, since running on no day is a
+	choice; a missing or unusable one reads as every day, which is what a
+	schedule stored before there was a choice of days did.
+
+	Args:
+		section: The stored schedule. dict.
+
+	Returns:
+		tuple[int, ...]: The days as ISO numbers, in order and each once.
+	"""
+	value = section.get(WEEKDAYS_FIELD)
+	if not isinstance(value, list):
+		return ALL_WEEKDAYS
+	days = {day for day in value if isinstance(day, int) and not isinstance(day, bool) and 1 <= day <= 7}
+	return tuple(sorted(days))
 
 
 def format_time(minute_of_day: int) -> tuple[str, str]:

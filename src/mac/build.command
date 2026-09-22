@@ -72,7 +72,12 @@ pkill -x FORLWidgets 2>/dev/null || true
 pluginkit -r "$built_app/Contents/PlugIns/FORLWidgets.appex" || true
 # Remove the parent build record too: ExtensionKit can otherwise keep launching
 # that executable after its plug-in record has been removed.
-/System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister -u "$built_app"
+# A build copy that was never registered, or already removed by an earlier run,
+# is nothing to stop the install over.
+/System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister -u "$built_app" 2>/dev/null || true
+# The icon cache is keyed on the bundle's date, which ditto carries over from
+# the build, so a new icon would keep showing the old one until it is touched.
+touch "$installed_app"
 /System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister -f "$installed_app"
 pluginkit -a "$installed_app/Contents/PlugIns/FORLWidgets.appex"
 # Drop cached extension launch paths without changing widget configurations.

@@ -66,6 +66,31 @@ enum HTTP {
 		return try await send(request)
 	}
 
+	/// Send a JSON POST and wait for it to be accepted.
+	///
+	/// What comes back is not read. The one request this is for is the message
+	/// that starts a session, whose answer is a model's reply nobody looks at,
+	/// and on one of the two services a stream rather than a document.
+	///
+	/// - Parameters:
+	///   - url: The endpoint to post to.
+	///   - body: The JSON object to send.
+	///   - headers: Request headers, including the authorization header.
+	/// - Returns: Nothing, once the endpoint has accepted the request.
+	/// - Throws: `UsageError.authentication` when the endpoint rejects the
+	///   token, `UsageError.request` when it cannot be reached or answers with
+	///   anything else.
+	static func postJSON(url: URL, body: [String: Any], headers: [String: String]) async throws {
+		var request = URLRequest(url: url, timeoutInterval: requestTimeout)
+		request.httpMethod = "POST"
+		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+		for (name, value) in headers {
+			request.setValue(value, forHTTPHeaderField: name)
+		}
+		request.httpBody = try JSONSerialization.data(withJSONObject: body)
+		_ = try await perform(request)
+	}
+
 	/// Return form fields as the body of a form encoded request.
 	///
 	/// - Parameter fields: The fields to encode.
@@ -98,6 +123,24 @@ enum HTTP {
 	/// - Returns: The decoded JSON object.
 	/// - Throws: `UsageError`, never a transport error of its own.
 	private static func send(_ request: URLRequest) async throws -> [String: Any] {
+		let data = try await perform(request)
+		guard
+			let decoded = try? JSONSerialization.jsonObject(with: data),
+			let document = decoded as? [String: Any]
+		else {
+			throw UsageError.request("Endpoint returned an unexpected payload shape.")
+		}
+		return document
+	}
+
+	/// Send a request and return its body once it has been accepted.
+	///
+	/// - Parameter request: The prepared request.
+	/// - Returns: The bytes the endpoint answered with.
+	/// - Throws: `UsageError.authentication` when the endpoint rejects the token,
+	///   `UsageError.request` when it cannot be reached or answers with anything
+	///   else. Never a transport error of its own.
+	private static func perform(_ request: URLRequest) async throws -> Data {
 		let data: Data
 		let response: URLResponse
 		do {
@@ -121,14 +164,7 @@ enum HTTP {
 			}
 			throw UsageError.request("Request failed with HTTP \(http.statusCode).")
 		}
-
-		guard
-			let decoded = try? JSONSerialization.jsonObject(with: data),
-			let document = decoded as? [String: Any]
-		else {
-			throw UsageError.request("Endpoint returned an unexpected payload shape.")
-		}
-		return document
+		return data
 	}
 
 	/// Return what an endpoint said about a refusal, as short text.

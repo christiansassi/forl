@@ -19,6 +19,11 @@ import os
 
 private let log = Logger(subsystem: "io.forl.app", category: "store")
 
+/// How often each service is asked whether its session start is due. Well under
+/// a minute, so a schedule with no grace still has its one minute checked, which
+/// a reading once a minute, a little late each time, could step over.
+private let sessionStartCheck: Duration = .seconds(20)
+
 /// Everything the app is currently showing.
 @MainActor
 @Observable
@@ -30,6 +35,11 @@ final class UsageStore {
 
 	/// The task that polls on a schedule, cancelled when the app quits.
 	private var loop: Task<Void, Never>?
+	/// The task that checks for session starts that are due, likewise.
+	private var sessionStartLoop: Task<Void, Never>?
+	/// The services whose session start message is on its way, so a second
+	/// check inside the same window does not send it twice.
+	private var startingSessions: Set<String> = []
 
 	/// Build the store and read who is signed in to each provider.
 	///
@@ -70,6 +80,12 @@ final class UsageStore {
 				try? await Task.sleep(for: .seconds(pollInterval))
 			}
 		}
+		sessionStartLoop = Task { [weak self] in
+			while !Task.isCancelled {
+				try? await Task.sleep(for: sessionStartCheck)
+				self?.checkSessionStarts()
+			}
+		}
 	}
 
 	/// Stop polling.
@@ -78,6 +94,8 @@ final class UsageStore {
 	func stop() {
 		loop?.cancel()
 		loop = nil
+		sessionStartLoop?.cancel()
+		sessionStartLoop = nil
 	}
 
 	/// Take one reading from every signed-in provider, at the same time.
@@ -92,6 +110,50 @@ final class UsageStore {
 			}
 		}
 		publish()
+		checkSessionStarts()
+	}
+
+	/// Send the session start message of every service it is due for.
+	///
+	/// A service qualifies when its schedule is inside today's window and its
+	/// session reads 0 percent in a reading taken recently: one left over from
+	/// before the machine slept says nothing about the session now, and the next
+	/// check asks again. A message that does not go through is not reported; the
+	/// next check inside the window tries again, and after it the day is missed.
+	///
+	/// - Parameter now: The moment to check at.
+	/// - Returns: Nothing. Each message is sent on a task of its own.
+	func checkSessionStarts(now: Date = Date()) {
+		for state in states where state.signedIn {
+			let key = state.provider.key
+			guard
+				!startingSessions.contains(key),
+				let snapshot = state.snapshot,
+				let day = preferences.sessionStart(for: key).dueDay(now: now),
+				now.timeIntervalSince(snapshot.fetchedAt) <= 2 * pollInterval,
+				snapshot.session.percent.rounded() == 0
+			else {
+				continue
+			}
+			startingSessions.insert(key)
+			Task { [weak self] in
+				do {
+					try await state.provider.startSession()
+				} catch {
+					log.error("\(key, privacy: .public): session start failed: \(error.localizedDescription, privacy: .public)")
+					self?.startingSessions.remove(key)
+					return
+				}
+				guard let self else {
+					return
+				}
+				self.startingSessions.remove(key)
+				self.preferences.setSessionStart(self.preferences.sessionStart(for: key).sent(for: day), for: key)
+				// A reading straight away, so the session that just started shows.
+				await state.poll()
+				self.publish()
+			}
+		}
 	}
 
 	/// Take one reading now rather than waiting out the interval.

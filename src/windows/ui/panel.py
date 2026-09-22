@@ -48,7 +48,7 @@ import time
 import tkinter as tk
 import tkinter.font as tkfont
 from dataclasses import replace
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from typing import Callable
 
 from PIL import Image, ImageTk
@@ -58,13 +58,14 @@ from ..render.glyphs import render_back, render_gear
 from ..render.logo import render_logo
 from ..render.shapes import outlined_fill, render_checkbox, rounded_fill
 from ..schedule.session_start import (
+	ALL_WEEKDAYS,
 	MAX_GRACE_MINUTES,
-	MESSAGE_TEXT,
 	MINUTE_STEP,
 	SessionStart,
 	format_time,
 	stepped_time,
 	switched,
+	toggled_weekday,
 )
 from ..render.theme import (
 	DARK_PALETTE,
@@ -134,6 +135,8 @@ TAB_KEY_PREFIX = "tab:"
 SHOW_KEY_PREFIX = "show:"
 SESSION_START_KEY = "session_start"
 GRACE_KEY = "grace"
+# A day of the week carries its ISO number after the prefix, Monday 1 to Sunday 7.
+WEEKDAY_KEY_PREFIX = "weekday:"
 # Each step of the time carries how far it moves the hours and the minutes.
 TIME_STEPS = {
 	"time:hour_down": (-1, 0),
@@ -153,10 +156,9 @@ SIGNED_IN_LABEL = "Signed in"
 NOT_SIGNED_IN_LABEL = "Not signed in"
 SIGN_IN_TO_LABEL = "Sign in to {label}"
 SIGNING_IN_LABEL = "Signing in..."
-SESSION_START_TITLE = "Usage window"
 SESSION_START_LABEL = "Start usage window automatically"
-SESSION_START_CAPTION = f'Sends "{MESSAGE_TEXT}" at this time when the current session is at 0%.'
-SESSION_START_TOMORROW = "Starts tomorrow."
+# The days of the week by their initials, Monday first, in ISO order.
+WEEKDAY_INITIALS = ("M", "T", "W", "T", "F", "S", "S")
 TIME_LABEL = "Time"
 GRACE_LABEL = "Late by up to"
 GRACE_VALUE = "{minutes} min"
@@ -198,6 +200,10 @@ SWITCH_HEIGHT = 24
 # step up, and how late it may be is a slider under its own line.
 TIME_STEP_GAP = 10
 TIME_FIELD_GAP = 12
+# The days it runs on are a row of seven circles across the settings, filled
+# with the service's color when chosen and outlined when not.
+WEEKDAY_SIZE = 28
+WEEKDAY_STROKE = 1
 SLIDER_HEIGHT = 18
 SLIDER_GAP = 4
 SLIDER_RING_OPACITY = 0.9
@@ -1157,10 +1163,11 @@ class Panel:
 		"""
 		y = self._draw_section_label(GENERAL_TITLE, y, SECTION_LABEL_GAP)
 		y = self._draw_startup_row(y)
+		# Beside the login switch rather than a group of its own: both are about
+		# what the app does on its own. It belongs to the service of the tab.
+		y = self._draw_session_start(y + self._unit(SETTINGS_ROW_GAP) / 2.0)
 		y = self._draw_section_label(ACCOUNT_TITLE, y + self._unit(SETTINGS_SECTION_GAP), SECTION_LABEL_GAP)
 		y = self._draw_account_row(y)
-		y = self._draw_section_label(SESSION_START_TITLE, y + self._unit(SETTINGS_SECTION_GAP), SECTION_LABEL_GAP)
-		y = self._draw_session_start(y)
 		if self._current.groups:
 			y = self._draw_section_label(SHOW_TITLE, y + self._unit(SETTINGS_SECTION_GAP), SHOW_LABEL_GAP)
 			y = self._draw_show_rows(y)
@@ -1316,13 +1323,73 @@ class Panel:
 		if not schedule.enabled:
 			return y
 
-		caption = SESSION_START_CAPTION
-		if schedule.starts_on is not None and schedule.starts_on > date.today():
-			caption = f"{caption} {SESSION_START_TOMORROW}"
-		item = self._text((pad, y), caption, "caption", self._palette.label_secondary, width=right - pad)
-		y = float(self._canvas.bbox(item)[3]) + self._unit(SETTINGS_ROW_GAP)
+		y = self._draw_weekday_row(schedule, y + self._unit(SETTINGS_ROW_GAP) / 2.0) + self._unit(SETTINGS_ROW_GAP)
 		y = self._draw_time_row(schedule, y) + self._unit(SETTINGS_ROW_GAP)
 		return self._draw_grace_row(schedule, y)
+
+	def _draw_weekday_row(self, schedule: SessionStart, y: float) -> float:
+		"""Draw the days of the week the session is started on, one circle each.
+
+		A chosen day is filled with the color of the service, and a day that is
+		not is an outline that takes that color, ring and initial, under the
+		pointer, as the other controls of the settings do. Both of its looks are
+		rendered now and swapped later, since the pointer moving is not a reason
+		to redraw the panel.
+
+		Args:
+			schedule: The schedule being shown. SessionStart.
+			y: Vertical cursor in device pixels. float.
+
+		Returns:
+			float: The vertical cursor at the bottom of the row.
+		"""
+		require_type(schedule, SessionStart, "schedule")
+		pad = self._unit(PANEL_PAD)
+		right = self._unit(PANEL_WIDTH) - pad
+		size = max(1, int(round(self._unit(WEEKDAY_SIZE))))
+		gap = (right - pad - size * len(ALL_WEEKDAYS)) / (len(ALL_WEEKDAYS) - 1)
+		stroke = max(1.0, self._unit(WEEKDAY_STROKE))
+		for index, (weekday, initial) in enumerate(zip(ALL_WEEKDAYS, WEEKDAY_INITIALS)):
+			left = pad + index * (size + gap)
+			chosen = weekday in schedule.weekdays
+			key = f"{WEEKDAY_KEY_PREFIX}{weekday}"
+			if chosen:
+				circle = ImageTk.PhotoImage(outlined_fill(size, size, self._accent, self._accent, size / 2.0, stroke))
+				self._control_photos.append(circle)
+				self._canvas.create_image(left, y, image=circle, anchor="nw", tags="content")
+				self._text((left + size / 2.0, y + size / 2.0), initial, "caption", on_accent(self._accent), anchor="center")
+			else:
+				surface = self._palette.surface
+				ring = ImageTk.PhotoImage(outlined_fill(size, size, surface, self._palette.label_tertiary, size / 2.0, stroke))
+				lit_ring = ImageTk.PhotoImage(outlined_fill(size, size, surface, self._accent, size / 2.0, stroke))
+				# Kept on the panel because Tk holds only a weak reference to the
+				# image behind a canvas item, and a collected photo leaves a gap.
+				self._control_photos.extend((ring, lit_ring))
+				circle_item = self._canvas.create_image(left, y, image=ring, anchor="nw", tags="content")
+				resting = self._palette.label_secondary
+				text_item = self._text((left + size / 2.0, y + size / 2.0), initial, "caption", resting, anchor="center")
+
+				def light(on: bool, circle_item: int = circle_item, text_item: int = text_item,
+						ring: ImageTk.PhotoImage = ring, lit_ring: ImageTk.PhotoImage = lit_ring, resting: str = resting) -> None:
+					"""Draw one unchosen day in the color of the service, or back as it rests.
+
+					Args:
+						on: Whether the pointer is over the day. bool.
+						circle_item: Canvas item id of the ring. int.
+						text_item: Canvas item id of the initial. int.
+						ring: The ring as it rests. ImageTk.PhotoImage.
+						lit_ring: The ring in the color of the service. ImageTk.PhotoImage.
+						resting: Color of the initial as it rests. str.
+
+					Returns:
+						None.
+					"""
+					self._canvas.itemconfigure(circle_item, image=lit_ring if on else ring)
+					self._canvas.itemconfigure(text_item, fill=self._accent if on else resting)
+
+				self._lit[key] = light
+			self._add_hit((left, y, left + size, y + size), key)
+		return y + size
 
 	def _draw_time_row(self, schedule: SessionStart, y: float) -> float:
 		"""Draw the time the session is started at, with a step down and up on each field.
@@ -1783,6 +1850,9 @@ class Panel:
 		elif key in TIME_STEPS:
 			hours, minutes = TIME_STEPS[key]
 			self._change_session_start(stepped_time(self._current.session_start, hours, minutes, datetime.now()))
+		elif key.startswith(WEEKDAY_KEY_PREFIX):
+			weekday = int(key[len(WEEKDAY_KEY_PREFIX):])
+			self._change_session_start(toggled_weekday(self._current.session_start, weekday))
 		elif key == GRACE_KEY:
 			self._drag_grace(event.x)
 		elif key in (SIGN_IN_KEY, ACCOUNT_KEY):
