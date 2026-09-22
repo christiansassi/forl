@@ -2,11 +2,11 @@
 	<img src="assets/banner.png" width="100%" alt="FORL">
 	<br><br>
     Made with ❤️ (and a lot of
-<img src="assets/claude.svg" alt="Claude" height="16" align="absmiddle">
+<img src="assets/ai-llm/claude.svg" alt="Claude" height="16" align="absmiddle">
 &nbsp;
 <picture>
-	<source media="(prefers-color-scheme: dark)" srcset="assets/chatgpt-dark.svg">
-	<img src="assets/chatgpt-light.svg" alt="OpenAI" height="16" align="absmiddle">
+	<source media="(prefers-color-scheme: dark)" srcset="assets/ai-llm/chatgpt-dark.svg">
+	<img src="assets/ai-llm/chatgpt-light.svg" alt="OpenAI" height="16" align="absmiddle">
 </picture>
 )
 <br>
@@ -17,9 +17,9 @@
 - [Introduction](#introduction)
 - [Demo (macOS)](#demo-macos)
 - [Installation](#installation)
-	- [macOS](#macos)
-	- [Windows](#windows)
-	- [Linux](#linux)
+	- [macOS](#-macos)
+	- [Windows](#-windows)
+	- [Linux](#-linux)
 
 # Introduction
 
@@ -36,7 +36,7 @@ This tool helps you keep track of your usage and stay within your limits. It cur
 
 # Installation
 
-## macOS
+## <img src="assets/os/macos.png" alt="macOS" height="24" align="absmiddle"> macOS
 
 > [!IMPORTANT]
 > Requires macOS 15 or later and Xcode.
@@ -51,7 +51,7 @@ This tool helps you keep track of your usage and stay within your limits. It cur
 
 The app is installed to `/Applications/FORL.app`.
 
-## Windows
+## <img src="assets/os/windows.png" alt="Windows" height="24" align="absmiddle"> Windows
 
 > [!IMPORTANT]
 > Requires Python 3.10 or later.
@@ -63,6 +63,6 @@ python src/windows/build.py
 
 The executable is written to `src/windows/dist/FORL.exe`.
 
-## Linux
+## <img src="assets/os/linux.png" alt="Linux" height="24" align="absmiddle"> Linux
 
 TBA
