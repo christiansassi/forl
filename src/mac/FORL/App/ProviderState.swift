@@ -242,7 +242,7 @@ final class ProviderState: Identifiable {
 		submitCode = nil
 		signInCode = ""
 		signInCodeMessage = ""
-		signInMessage = "Signed out."
+		signInMessage = ""
 		refreshAccount()
 	}
 

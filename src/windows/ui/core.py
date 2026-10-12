@@ -59,7 +59,6 @@ NOT_SIGNED_IN_TEXT = "Not signed in"
 
 SIGNING_IN_TEXT = "Signing in. Finish in the browser."
 NO_BROWSER_TEXT = "No browser opened. Use the address below."
-SIGNED_OUT_TEXT = "Signed out."
 
 
 class MenuRow(NamedTuple):
@@ -585,7 +584,7 @@ class WidgetCore:
 		self._signed_out = True
 		self._sign_in_prompted = False
 		self._snapshot = None
-		self._sign_in_message = SIGNED_OUT_TEXT
+		self._sign_in_message = ""
 		self._sign_in_link = ""
 		self._submit_code = None
 		self._on_change()

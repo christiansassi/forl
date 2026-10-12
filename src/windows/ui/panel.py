@@ -130,6 +130,7 @@ STARTUP_KEY = "startup"
 ACCOUNT_KEY = "account"
 SIGN_IN_KEY = "sign_in"
 SIGN_IN_LINK_KEY = "sign_in_link"
+SIGN_IN_CODE_KEY = "sign_in_code"
 # A tab and a Show checkbox each carry what they stand for after the prefix.
 TAB_KEY_PREFIX = "tab:"
 SHOW_KEY_PREFIX = "show:"
@@ -155,7 +156,6 @@ SIGN_IN_LABEL = "Sign in"
 SIGNED_IN_LABEL = "Signed in"
 NOT_SIGNED_IN_LABEL = "Not signed in"
 SIGN_IN_TO_LABEL = "Sign in to {label}"
-SIGNING_IN_LABEL = "Signing in..."
 SESSION_START_LABEL = "Start usage window automatically"
 # The days of the week by their initials, Monday first, in ISO order.
 WEEKDAY_INITIALS = ("M", "T", "W", "T", "F", "S", "S")
@@ -238,10 +238,10 @@ ELLIPSIS = "..."
 # click either.
 LINK_GAP = 12
 LINK_CAPTION_GAP = 5
-LINK_PREFIX = "If the browser doesn't open, "
-LINK_WORDS = "click here"
+LINK_PREFIX = "If the browser doesn't open, click "
+LINK_WORDS = "here"
 LINK_SUFFIX = "."
-LINK_COPIED_TEXT = "Copied. Paste it in a browser if none opened."
+CODE_INSTRUCTION = "Paste the code here (if any):"
 
 SUBTITLE_OFFSET = 17
 LIMIT_ROW_MIN_HEIGHT = 34
@@ -392,7 +392,6 @@ class Panel:
 		# way. It is only stored when the button is let go, so a drag writes the
 		# preferences once rather than at every step.
 		self._dragged_grace: int | None = None
-		self._link_caption_item = 0
 		self._bars: list[tuple[CapsuleBar, Spring]] = []
 		self._springs: dict[str, Spring] = {}
 		self._content_height = 0
@@ -436,9 +435,14 @@ class Panel:
 		self._canvas.bind("<ButtonRelease-1>", self._on_release)
 		self._canvas.bind("<Motion>", self._on_motion)
 		self._canvas.bind("<Leave>", self._on_leave)
-		self._code_entry = tk.Entry(self._canvas, show="*", relief="solid", borderwidth=1, exportselection=False)
+		self._code_entry = tk.Entry(self._canvas, show="*", relief="flat", borderwidth=0, highlightthickness=0, exportselection=False)
 		self._code_entry.bind("<Return>", lambda _event: self._submit_sign_in_code())
-		self._code_button = tk.Button(self._canvas, text="Continue", command=self._submit_sign_in_code, relief="flat", borderwidth=0)
+		self._code_entry.bind("<<Paste>>", self._paste_sign_in_code)
+		self._code_entry.bind("<FocusIn>", self._update_code_focus)
+		self._code_entry.bind("<FocusOut>", self._update_code_focus)
+		self._code_button = tk.Button(self._canvas, text="Continue", command=self._submit_sign_in_code, relief="flat", borderwidth=0, highlightthickness=0)
+		self._code_field_item = 0
+		self._code_field_photos: tuple[ImageTk.PhotoImage, ...] = ()
 		self._code_attempt: tuple[str, str] | None = None
 		self._code_error = ""
 		self._apply_palette()
@@ -634,6 +638,11 @@ class Panel:
 		pad = self._unit(PANEL_PAD)
 		right = self._unit(PANEL_WIDTH) - pad
 
+		if self._current.sign_in_link:
+			self._status_item = 0
+			self._spinner_item = 0
+			return self._draw_sign_in_link(y)
+
 		if self._loading():
 			# The skeleton says a reading is on its way, so neither the word nor
 			# the spinner is needed beside it.
@@ -650,12 +659,6 @@ class Panel:
 			self._palette.label_secondary,
 			width=self._unit(PANEL_WIDTH - 2 * PANEL_PAD),
 		)
-
-		if self._current.sign_in_link:
-			# The address takes the place of the countdown's trailing space: a
-			# sign-in is in front of the reading, not beside it.
-			self._spinner_item = 0
-			return self._draw_sign_in_link(self._canvas.bbox(self._status_item)[3], centered=False)
 
 		if self._current.refreshing:
 			size = self._unit(SPINNER_SIZE)
@@ -1189,7 +1192,7 @@ class Panel:
 		if self._current.groups:
 			y = self._draw_section_label(SHOW_TITLE, y + self._unit(SETTINGS_SECTION_GAP), SHOW_LABEL_GAP)
 			y = self._draw_show_rows(y)
-		return self._draw_sign_in_link(y, centered=False)
+		return self._draw_sign_in_link(y)
 
 	def _draw_section_label(self, title: str, y: float, gap: float) -> float:
 		"""Draw the small heading over a group of settings.
@@ -1725,69 +1728,57 @@ class Panel:
 		pad = self._unit(PANEL_PAD)
 		right = self._unit(PANEL_WIDTH) - pad
 		center = self._unit(PANEL_WIDTH) / 2.0
-		y += self._unit(SIGN_IN_PAGE_PAD)
 
-		height = self._unit(SIGN_IN_BUTTON_HEIGHT)
-		words = SIGNING_IN_LABEL if view.signing_in else SIGN_IN_TO_LABEL.format(label=view.provider.label)
-		button = self._text((center, y + height / 2.0), words, "title", self._accent, anchor="center")
 		if not view.signing_in:
+			y += self._unit(SIGN_IN_PAGE_PAD)
+			height = self._unit(SIGN_IN_BUTTON_HEIGHT)
+			button = self._text((center, y + height / 2.0), SIGN_IN_TO_LABEL.format(label=view.provider.label), "title", self._accent, anchor="center")
 			self._underline_on_hover(button, "title", SIGN_IN_KEY)
 			self._add_hit((pad, y, right, y + height), SIGN_IN_KEY)
-		y += height
+			y += height
 		if view.sign_in_message and not view.signing_in:
 			message = self._text((pad, y), view.sign_in_message, "caption", self._palette.label_secondary, width=right - pad)
 			y = self._canvas.bbox(message)[3] + self._unit(LINK_CAPTION_GAP)
-		return self._draw_sign_in_link(y, centered=True) + self._unit(SIGN_IN_PAGE_PAD)
+		return self._draw_sign_in_link(y) + self._unit(SIGN_IN_PAGE_PAD)
 
-	def _draw_sign_in_link(self, y: float, centered: bool) -> float:
-		"""Draw the address a sign-in is waiting at, when there is one.
+	def _draw_sign_in_link(self, y: float) -> float:
+		"""Draw two centered instruction lines and the pending sign-in controls.
 
-		Written as the Mac app writes it, with the address behind the words
-		"click here" rather than spelled out: an authorization address is far
-		too long to read, and nothing is gained by showing it.
+		Keep the authorization address behind "here" so only that word is
+		highlighted, and place the code instruction on its own line.
 
 		Args:
 			y: Vertical cursor in device pixels. float.
-			centered: Whether to center the line across the panel, which is how
-				the sign-in page sets it, rather than start it at the margin.
-				bool.
 
 		Returns:
 			float: The vertical cursor after the link, unchanged when there is
 			no address to offer.
 		"""
-		require_type(centered, bool, "centered")
 		if not self._current.sign_in_link:
 			return y
 
-		pad = self._unit(PANEL_PAD)
 		room = self._unit(PANEL_WIDTH - 2 * PANEL_PAD)
 		y += self._unit(LINK_GAP)
 
-		font = self._font("caption")
-		total = sum(font.measure(part) for part in (LINK_PREFIX, LINK_WORDS, LINK_SUFFIX))
-		x = self._unit(PANEL_WIDTH) / 2.0 - total / 2.0 if centered else pad
-		prefix = self._text((x, y), LINK_PREFIX, "caption", self._palette.label_secondary)
-		x += font.measure(LINK_PREFIX)
-		words = self._text((x, y), LINK_WORDS, "caption", self._accent)
-		x += font.measure(LINK_WORDS)
-		self._text((x, y), LINK_SUFFIX, "caption", self._palette.label_secondary)
-		self._underline_on_hover(words, "caption", SIGN_IN_LINK_KEY)
-		self._add_text_hit(words, SIGN_IN_LINK_KEY)
-
-		y = self._canvas.bbox(prefix)[3] + self._unit(LINK_CAPTION_GAP)
-		self._link_caption_item = self._text(
-			(self._unit(PANEL_WIDTH) / 2.0 if centered else pad, y),
-			"",
-			"caption",
-			self._palette.label_secondary,
-			anchor="n" if centered else "nw",
-			width=room,
-		)
-		return self._draw_sign_in_code(y + self._unit(SUBTITLE_OFFSET))
+		font = self._font("row")
+		line_height = font.metrics("linespace") + self._unit(2)
+		center = self._unit(PANEL_WIDTH) / 2
+		prefix_width = font.measure(LINK_PREFIX)
+		link_width = font.measure(LINK_WORDS)
+		x = center - (prefix_width + link_width + font.measure(LINK_SUFFIX)) / 2
+		self._text((x, y), LINK_PREFIX, "row", self._palette.label_primary)
+		link = self._text((x + prefix_width, y), LINK_WORDS, "row", self._accent)
+		self._text((x + prefix_width + link_width, y), LINK_SUFFIX, "row", self._palette.label_primary)
+		self._underline_on_hover(link, "row", SIGN_IN_LINK_KEY)
+		self._add_text_hit(link, SIGN_IN_LINK_KEY)
+		y += line_height
+		if not self._current.accepting_code:
+			return y
+		instruction = self._text((center, y), CODE_INSTRUCTION, "row", self._palette.label_primary, anchor="n", width=room)
+		return self._draw_sign_in_code(self._canvas.bbox(instruction)[3] + self._unit(10))
 
 	def _draw_sign_in_code(self, y: float) -> float:
-		"""Draw a native code field for the current Claude sign-in.
+		"""Draw rounded code controls around native keyboard-accessible widgets.
 
 		Args:
 			y: Vertical cursor in device pixels. float.
@@ -1799,21 +1790,62 @@ class Panel:
 			return y
 		pad = self._unit(PANEL_PAD)
 		room = self._unit(PANEL_WIDTH - 2 * PANEL_PAD)
-		y += self._unit(LINK_GAP)
-		label = self._text((pad, y), "If the browser shows a code, paste it here:", "caption", self._palette.label_secondary, width=room)
-		y = self._canvas.bbox(label)[3] + self._unit(LINK_CAPTION_GAP)
 		font = self._font("row")
-		height = self._unit(30)
-		button_width = font.measure("Continue") + self._unit(16)
-		self._code_entry.configure(font=font, background=self._palette.surface, foreground=self._palette.label_primary, insertbackground=self._palette.label_primary)
-		self._code_button.configure(font=font, background=self._palette.surface, foreground=self._accent, activebackground=self._palette.surface, activeforeground=self._accent)
-		self._canvas.create_window(pad, y, window=self._code_entry, anchor="nw", width=room - button_width - self._unit(8), height=height, tags="content")
-		self._canvas.create_window(pad + room - button_width, y, window=self._code_button, anchor="nw", width=button_width, height=height, tags="content")
+		height = self._unit(36)
+		radius = self._unit(8)
+		button_width = font.measure("Continue") + self._unit(24)
+		field_width = room - button_width - self._unit(8)
+		fill = mix_hex(self._palette.surface, self._palette.label_primary, 0.04)
+		self._code_field_photos = tuple(ImageTk.PhotoImage(outlined_fill(field_width, height, fill, border, radius, self._unit(1))) for border in (mix_hex(fill, self._palette.label_primary, 0.18), self._accent))
+		focused = self._window.focus_get() == self._code_entry
+		self._code_field_item = self._canvas.create_image(pad, y, image=self._code_field_photos[int(focused)], anchor="nw", tags="content")
+		self._code_entry.configure(font=font, background=fill, foreground=self._palette.label_primary, insertbackground=self._palette.label_primary, selectbackground=self._accent, selectforeground=on_accent(self._accent))
+		entry_height = font.metrics("linespace") + self._unit(2)
+		self._canvas.create_window(pad + self._unit(12), y + (height - entry_height) / 2.0, window=self._code_entry, anchor="nw", width=field_width - self._unit(24), height=entry_height, tags="content")
+		button_x = pad + room - button_width
+		button_photo = ImageTk.PhotoImage(rounded_fill(button_width, height, self._accent, radius))
+		self._control_photos.append(button_photo)
+		self._canvas.create_image(button_x, y, image=button_photo, anchor="nw", tags="content")
+		self._code_button.configure(font=font, background=self._accent, foreground=on_accent(self._accent), activebackground=self._accent, activeforeground=on_accent(self._accent))
+		inset = self._unit(5)
+		self._canvas.create_window(button_x + inset, y + inset, window=self._code_button, anchor="nw", width=button_width - 2 * inset, height=height - 2 * inset, tags="content")
+		self._add_hit((button_x, y, button_x + button_width, y + height), SIGN_IN_CODE_KEY)
 		y += height
 		if self._code_error:
 			message = self._text((pad, y + self._unit(LINK_CAPTION_GAP)), self._code_error, "caption", self._palette.label_secondary, width=room)
 			y = self._canvas.bbox(message)[3]
 		return y
+
+	def _update_code_focus(self, _event: tk.Event) -> None:
+		"""Highlight the rounded field border when its native input has focus.
+
+		Args:
+			_event: The input's focus event. tkinter.Event.
+
+		Returns:
+			None.
+		"""
+		if self._code_field_item:
+			focused = self._window.focus_get() == self._code_entry
+			self._canvas.itemconfigure(self._code_field_item, image=self._code_field_photos[int(focused)])
+
+	def _paste_sign_in_code(self, _event: tk.Event) -> str:
+		"""Replace the whole code field when the user pastes at any cursor position.
+
+		Args:
+			_event: The input's paste event. tkinter.Event.
+
+		Returns:
+			str: "break" to prevent Tk from inserting the clipboard a second time.
+		"""
+		try:
+			code = self._code_entry.clipboard_get()
+		except tk.TclError:
+			return "break"
+		self._code_entry.delete(0, tk.END)
+		self._code_entry.insert(0, code.strip())
+		self._code_entry.icursor(tk.END)
+		return "break"
 
 	def _submit_sign_in_code(self) -> None:
 		"""Submit the field contents and show validation failures in the panel.
@@ -1871,8 +1903,6 @@ class Panel:
 		except tk.TclError:
 			# No clipboard to write to, which costs the paste and nothing else.
 			pass
-		if self._link_caption_item:
-			self._canvas.itemconfigure(self._link_caption_item, text=LINK_COPIED_TEXT)
 		self._on_open_sign_in(self._selected_key)
 
 	def _rebuild(self) -> None:
@@ -1885,6 +1915,8 @@ class Panel:
 		# over is put back over the mark that has replaced it.
 		hovered = self._hovered
 		self._canvas.delete("content")
+		self._code_field_item = 0
+		self._code_field_photos = ()
 		self._bars.clear()
 		self._hits.clear()
 		self._lit.clear()
@@ -1898,7 +1930,6 @@ class Panel:
 		self._session_switch = None
 		self._slider = None
 		self._grace_item = 0
-		self._link_caption_item = 0
 		self._scroll_offset = 0.0
 
 		self._current = self._describe(self._selected_key)
@@ -1979,6 +2010,8 @@ class Panel:
 				self._on_sign_in(self._selected_key)
 		elif key == SIGN_IN_LINK_KEY:
 			self._open_sign_in_link()
+		elif key == SIGN_IN_CODE_KEY:
+			self._submit_sign_in_code()
 
 	def _on_leave(self, _event: tk.Event) -> None:
 		"""Put back whatever the pointer was over when it leaves the panel.

@@ -12,7 +12,9 @@
 //  watches both rather than one process each.
 //
 
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Which of the two views the panel is showing.
 enum PanelPage {
@@ -76,22 +78,23 @@ struct PanelView: View {
 	/// - Returns: The provider-colored action and, while a sign-in is under way, its address.
 	private func signIn(state: ProviderState) -> some View {
 		VStack(spacing: 12) {
-			Button {
-				Task {
-					await state.signIn()
-					page = .usage
-					store.publish()
-					store.refresh()
+			if !state.signingIn {
+				Button {
+					Task {
+						await state.signIn()
+						page = .usage
+						store.publish()
+						store.refresh()
+					}
+				} label: {
+					Text("Sign in to \(state.provider.label)")
+						.font(.system(size: 14, weight: .semibold))
+						.foregroundStyle(state.provider.accent)
+						.frame(maxWidth: .infinity, minHeight: 44)
+						.contentShape(Rectangle())
 				}
-			} label: {
-				Text(state.signingIn ? "Signing in…" : "Sign in to \(state.provider.label)")
-					.font(.system(size: 14, weight: .semibold))
-					.foregroundStyle(state.provider.accent)
-					.frame(maxWidth: .infinity, minHeight: 44)
-					.contentShape(Rectangle())
+				.buttonStyle(.plain)
 			}
-			.buttonStyle(.plain)
-			.disabled(state.signingIn)
 			if !state.signInMessage.isEmpty, !state.signingIn {
 				Text(state.signInMessage)
 					.font(.system(size: 11))
@@ -246,7 +249,7 @@ private struct ProviderSection: View {
 
 			// The skeleton already says a reading is on its way, so the line that
 			// would otherwise say "Loading" is left out while it is showing.
-			if !loading {
+			if !loading && state.signInLink.isEmpty {
 				Spacer().frame(height: 22)
 
 				HStack(spacing: 10) {
@@ -321,26 +324,48 @@ private struct MetricRow: View {
 struct SignInControls: View {
 	/// The pending sign-in and its code submission function.
 	@Bindable var state: ProviderState
+	@FocusState private var codeFocused: Bool
+
 	var body: some View {
-		VStack(alignment: .leading, spacing: 8) {
+		VStack(alignment: .leading, spacing: 10) {
 			if let url = URL(string: state.signInLink) {
 				Text(instruction(url: url))
-					.font(.system(size: 11))
-					.foregroundStyle(.secondary)
+					.font(.system(size: 13))
+					.foregroundStyle(.primary)
+					.tint(state.provider.accent)
+					.multilineTextAlignment(.center)
 					.fixedSize(horizontal: false, vertical: true)
+					.frame(maxWidth: .infinity)
 			}
 			if state.acceptingSignInCode {
-				Text("If the browser shows a code, paste it here:")
-					.font(.system(size: 11))
-					.foregroundStyle(.secondary)
 				HStack(spacing: 8) {
 					SecureField("Authorization code", text: $state.signInCode)
-						.textFieldStyle(.roundedBorder)
+						.textFieldStyle(.plain)
+						.font(.system(size: 12))
+						.padding(.horizontal, 12)
+						.frame(height: 36)
+						.background {
+							RoundedRectangle(cornerRadius: 8, style: .continuous)
+								.fill(Color.primary.opacity(0.04))
+						}
+						.overlay {
+							RoundedRectangle(cornerRadius: 8, style: .continuous)
+								.stroke(codeFocused ? state.provider.accent : Color.primary.opacity(0.18), lineWidth: 1)
+						}
+						.focused($codeFocused)
 						.onSubmit { state.submitSignInCode() }
+						.onPasteCommand(of: [.plainText]) { _ in
+							if let code = NSPasteboard.general.string(forType: .string) {
+								state.signInCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
+								codeFocused = true
+							}
+						}
 					Button("Continue") { state.submitSignInCode() }
+						.buttonStyle(.bordered)
+						.tint(state.provider.accent)
+						.controlSize(.regular)
 						.disabled(state.signInCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 				}
-				.controlSize(.small)
 				if !state.signInCodeMessage.isEmpty {
 					Text(state.signInCodeMessage)
 						.font(.system(size: 11))
@@ -355,11 +380,12 @@ struct SignInControls: View {
 	/// - Parameter url: The address for the pending browser sign-in.
 	/// - Returns: The sign-in instruction with its clickable address.
 	private func instruction(url: URL) -> AttributedString {
-		var text = AttributedString("If the browser doesn’t open, ")
-		var link = AttributedString("click here")
+		var text = AttributedString("If the browser doesn't open, click ")
+		var link = AttributedString("here")
 		link.link = url
+		link.foregroundColor = state.provider.accent
 		text += link
-		text += AttributedString(".")
+		text += AttributedString(state.acceptingSignInCode ? ".\nPaste the code here (if any):" : ".")
 		return text
 	}
 }
