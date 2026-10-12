@@ -40,6 +40,9 @@ NOT_SIGNED_IN_MESSAGE = "Not signed in."
 REJECTED_MESSAGE = "The provider refused the sign-in."
 WRONG_STATE_MESSAGE = "The sign-in answer did not match the request."
 
+CodeSubmission = Callable[[str], bool]
+CodeOffer = Callable[[CodeSubmission], None]
+
 
 @dataclass(frozen=True)
 class OAuthClient:
@@ -62,6 +65,8 @@ class OAuthClient:
 		headers: Request headers this provider wants on a token request, such as
 			the user agent an endpoint behind a bot check insists on. tuple of
 			str pairs.
+		manual_redirect_uri: Hosted callback that displays a code to paste,
+			empty when manual sign-in is unsupported. str.
 	"""
 
 	key: str
@@ -74,8 +79,9 @@ class OAuthClient:
 	redirect_path: str
 	authorize_extras: tuple[tuple[str, str], ...] = ()
 	headers: tuple[tuple[str, str], ...] = ()
+	manual_redirect_uri: str = ""
 
-	def redirect_uri(self, port: int) -> str:
+	def redirect_uri(self, port: int, manual: bool = False) -> str:
 		"""Return the redirect to name, for the port being listened on.
 
 		Written with "localhost" rather than the address actually listened on,
@@ -84,17 +90,21 @@ class OAuthClient:
 
 		Args:
 			port: The port being listened on. int, 1 or more.
+			manual: Whether to use the hosted code callback. bool.
 
 		Returns:
 			str: The redirect URI.
 		"""
 		require_type(port, int, "port")
+		require_type(manual, bool, "manual")
 		if port < 1:
 			raise ValueError("port must be 1 or more")
+		if manual:
+			return require_non_empty_str(self.manual_redirect_uri, "manual_redirect_uri")
 		return f"http://localhost:{port}{self.redirect_path}"
 
 
-def authorization_url(client: OAuthClient, port: int, code_challenge: str, state: str) -> str:
+def authorization_url(client: OAuthClient, port: int, code_challenge: str, state: str, manual: bool = False) -> str:
 	"""Return the page to send the browser to.
 
 	Args:
@@ -103,6 +113,7 @@ def authorization_url(client: OAuthClient, port: int, code_challenge: str, state
 		code_challenge: The proof key challenge, as pkce.challenge returned it.
 			str, non-empty.
 		state: The value the provider must echo back. str, non-empty.
+		manual: Whether to ask for a code at the hosted callback. bool.
 
 	Returns:
 		str: The full authorization URL.
@@ -110,6 +121,7 @@ def authorization_url(client: OAuthClient, port: int, code_challenge: str, state
 	require_type(client, OAuthClient, "client")
 	require_non_empty_str(code_challenge, "code_challenge")
 	require_non_empty_str(state, "state")
+	require_type(manual, bool, "manual")
 
 	# The extras go first, which is where the tool these endpoints were built
 	# for puts the ones it sends. Order carries no meaning in a query string,
@@ -120,7 +132,7 @@ def authorization_url(client: OAuthClient, port: int, code_challenge: str, state
 		{
 			"client_id": client.client_id,
 			"response_type": "code",
-			"redirect_uri": client.redirect_uri(port),
+			"redirect_uri": client.redirect_uri(port, manual),
 			"scope": client.scope,
 			"code_challenge": code_challenge,
 			"code_challenge_method": "S256",
@@ -154,7 +166,7 @@ def _token_request(client: OAuthClient, fields: dict[str, str]) -> dict[str, Any
 		raise CredentialsError(REJECTED_MESSAGE) from exc
 
 
-def exchange(client: OAuthClient, port: int, code: str, code_verifier: str, state: str) -> dict[str, Any]:
+def exchange(client: OAuthClient, port: int, code: str, code_verifier: str, state: str, manual: bool = False) -> dict[str, Any]:
 	"""Exchange an authorization code for tokens.
 
 	The state goes with the exchange as well as with the authorization request,
@@ -171,6 +183,7 @@ def exchange(client: OAuthClient, port: int, code: str, code_verifier: str, stat
 			request. str, non-empty.
 		state: The state that went with the authorization request. str,
 			non-empty.
+		manual: Whether the code came from the hosted manual callback. bool.
 
 	Returns:
 		dict[str, Any]: The token endpoint's answer, whose useful fields are
@@ -185,6 +198,7 @@ def exchange(client: OAuthClient, port: int, code: str, code_verifier: str, stat
 	require_non_empty_str(code, "code")
 	require_non_empty_str(code_verifier, "code_verifier")
 	require_non_empty_str(state, "state")
+	require_type(manual, bool, "manual")
 
 	return _token_request(
 		client,
@@ -192,7 +206,7 @@ def exchange(client: OAuthClient, port: int, code: str, code_verifier: str, stat
 			"grant_type": "authorization_code",
 			"code": code,
 			"client_id": client.client_id,
-			"redirect_uri": client.redirect_uri(port),
+			"redirect_uri": client.redirect_uri(port, manual),
 			"code_verifier": code_verifier,
 			"state": state,
 		},
@@ -234,6 +248,7 @@ def sign_in(
 	client: OAuthClient,
 	on_address: Callable[[str, bool], None],
 	timeout: float = SIGN_IN_TIMEOUT_SECONDS,
+	on_code: CodeOffer | None = None,
 ) -> dict[str, Any]:
 	"""Run the whole sign-in: open the browser, catch the code, exchange it.
 
@@ -251,6 +266,8 @@ def sign_in(
 			returning None.
 		timeout: How long to wait for the browser to come back, in seconds.
 			float, between 1 and 900.
+		on_code: Called with a function that accepts a pasted Claude code and
+			returns whether it completed the wait. CodeOffer or None.
 
 	Returns:
 		dict[str, Any]: The token endpoint's answer.
@@ -264,13 +281,12 @@ def sign_in(
 	require_number_in_range(timeout, 1.0, 900.0, "timeout")
 	if not callable(on_address):
 		raise TypeError("on_address must be callable")
+	if on_code is not None and not callable(on_code):
+		raise TypeError("on_code must be callable or None")
 
 	if client.redirect_port != ANY_PORT and not port_is_free(client.redirect_port):
 		# Only worth saying for a provider that accepts one port and no other.
-		raise CredentialsError(
-			f"Port {client.redirect_port} is in use, so {client.label} cannot sign in. "
-			"Close whatever is using it and try again."
-		)
+		raise CredentialsError(f"Port {client.redirect_port} is in use, so {client.label} cannot sign in. Close whatever is using it and try again.")
 
 	try:
 		catcher = RedirectCatcher(client.redirect_port, client.redirect_path)
@@ -281,11 +297,15 @@ def sign_in(
 	state = pkce.state()
 	with catcher:
 		port = catcher.port
-		url = authorization_url(client, port, pkce.challenge(verifier), state)
+		code_challenge = pkce.challenge(verifier)
+		url = authorization_url(client, port, code_challenge, state)
+		address = authorization_url(client, port, code_challenge, state, manual=True) if client.manual_redirect_uri and on_code is not None else url
 		opened = webbrowser.open(url)
 		if not opened:
-			print(f"Open this address to sign in to {client.label}:\n{url}", file=sys.stderr)
-		on_address(url, opened)
+			print(f"Open this address to sign in to {client.label}:\n{address}", file=sys.stderr)
+		on_address(address, opened)
+		if client.manual_redirect_uri and on_code is not None:
+			on_code(lambda code: catcher.submit_code(code, state))
 		redirect = catcher.wait(timeout)
 
 	if redirect is None:
@@ -297,7 +317,7 @@ def sign_in(
 		raise CredentialsError(WRONG_STATE_MESSAGE)
 	if not redirect.code:
 		raise CredentialsError(ABANDONED_MESSAGE)
-	return exchange(client, port, redirect.code, verifier, state)
+	return exchange(client, port, redirect.code, verifier, state, manual=redirect.manual)
 
 
 def expires_at(answer: dict[str, Any]) -> float:

@@ -129,6 +129,7 @@ class WidgetApp:
 			on_sign_in=lambda key: self._core(key).sign_in_now(),
 			on_sign_out=lambda key: self._core(key).sign_out(),
 			on_open_sign_in=lambda key: self._core(key).open_sign_in_link(),
+			on_sign_in_code=lambda key, code: self._core(key).submit_sign_in_code(code),
 			on_toggle_metric=lambda key, metric: self._core(key).toggle_metric(metric),
 			on_session_start_change=lambda key, schedule: self._core(key).set_session_start(schedule),
 		)

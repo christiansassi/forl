@@ -24,11 +24,12 @@ protocol Provider: Sendable {
 	/// Takes as long as the user does, so it belongs off the thread drawing the
 	/// interface.
 	///
-	/// - Parameter onAddress: Called once with the address to sign in at and
-	///   whether a browser was opened at it.
+	/// - Parameters:
+	///   - onAddress: Called with the address to sign in at and whether a browser opened.
+	///   - onCode: Receive the function for submitting a browser code when supported.
 	/// - Returns: Who is now signed in, as the settings should name them.
 	/// - Throws: `UsageError` when the sign-in was refused or not completed.
-	func signIn(onAddress: @Sendable @escaping (String, Bool) -> Void) async throws -> String
+	func signIn(onAddress: @Sendable @escaping (String, Bool) -> Void, onCode: SignInCodeOffer?) async throws -> String
 
 	/// Take one usage reading.
 	///

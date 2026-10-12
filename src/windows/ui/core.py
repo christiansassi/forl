@@ -34,6 +34,7 @@ from datetime import date, datetime
 from typing import Callable, NamedTuple
 
 from ..auth import store as credentials
+from ..auth.oauth import CodeSubmission
 from ..providers import Provider
 from ..schedule.session_start import SessionStart, due_day
 from ..settings.store import Preferences, load as load_preferences, save as save_preferences
@@ -116,6 +117,7 @@ class ProviderView(NamedTuple):
 			Show section checks. frozenset of str.
 		session_start: When the five hour session is started for the user.
 			SessionStart.
+		accepting_code: Whether the current sign-in accepts a pasted code. bool.
 	"""
 
 	provider: Provider
@@ -130,6 +132,7 @@ class ProviderView(NamedTuple):
 	groups: tuple[tuple[Metric, ...], ...]
 	displayed: frozenset[str]
 	session_start: SessionStart
+	accepting_code: bool = False
 
 
 def quit_rows() -> tuple[MenuRow, ...]:
@@ -187,6 +190,7 @@ class WidgetCore:
 		# The address the sign-in under way is waiting at, kept so a surface can
 		# offer it and so a click on it has somewhere to go.
 		self._sign_in_link = ""
+		self._submit_code: CodeSubmission | None = None
 		# Set when the user signs out, which is the one case where being signed
 		# out must not put a browser window in front of them.
 		self._signed_out = False
@@ -312,6 +316,7 @@ class WidgetCore:
 			status=self.status_text(),
 			sign_in_message=self._sign_in_message,
 			sign_in_link=self._sign_in_link,
+			accepting_code=self._submit_code is not None,
 			refreshing=self._refreshing,
 			signed_in=signed_in,
 			signing_in=self._signing_in,
@@ -582,6 +587,7 @@ class WidgetCore:
 		self._snapshot = None
 		self._sign_in_message = SIGNED_OUT_TEXT
 		self._sign_in_link = ""
+		self._submit_code = None
 		self._on_change()
 
 	def open_sign_in_link(self) -> None:
@@ -593,6 +599,26 @@ class WidgetCore:
 		if not self._sign_in_link:
 			return
 		webbrowser.open(self._sign_in_link)
+
+	def submit_sign_in_code(self, code: str) -> bool:
+		"""Submit a browser code without starting another sign-in.
+
+		Args:
+			code: The authorization code copied from the current browser tab. str.
+
+		Returns:
+			bool: True when the pending sign-in accepted the code.
+
+		Raises:
+			ValueError: When code is invalid or the sign-in is no longer waiting.
+		"""
+		require_non_empty_str(code, "code")
+		if self._submit_code is None or not self._submit_code(code):
+			raise ValueError("code cannot be submitted because this sign-in is no longer waiting. Try signing in again.")
+		self._submit_code = None
+		self._sign_in_message = "Finishing sign-in..."
+		self._on_change()
+		return True
 
 	def start(self) -> None:
 		"""Start polling.
@@ -679,7 +705,7 @@ class WidgetCore:
 		"""
 		message = ""
 		try:
-			self._provider.sign_in(self._offer_address)
+			self._provider.sign_in(self._offer_address, self._offer_code)
 		except (CredentialsError, UsageRequestError) as exc:
 			message = str(exc)
 		self._dispatch(lambda: self._finish_sign_in(message))
@@ -695,6 +721,32 @@ class WidgetCore:
 			None. Runs on the sign-in thread.
 		"""
 		self._dispatch(lambda: self._show_address(address, opened))
+
+	def _offer_code(self, submit: CodeSubmission) -> None:
+		"""Send the code submission function to the interface thread.
+
+		Args:
+			submit: The current sign-in's code submission function. CodeSubmission.
+
+		Returns:
+			None.
+		"""
+		self._dispatch(lambda: self._show_code(submit))
+
+	def _show_code(self, submit: CodeSubmission) -> None:
+		"""Enable code entry for the pending sign-in.
+
+		Args:
+			submit: The current sign-in's code submission function. CodeSubmission.
+
+		Returns:
+			None. Runs on the interface thread.
+		"""
+		if not callable(submit):
+			raise TypeError("submit must be callable")
+		if self._signing_in:
+			self._submit_code = submit
+			self._on_change()
 
 	def _show_address(self, address: str, opened: bool) -> None:
 		"""Put the sign-in address in front of the user.
@@ -728,6 +780,7 @@ class WidgetCore:
 		"""
 		require_type(message, str, "message")
 		self._signing_in = False
+		self._submit_code = None
 		self._sign_in_message = message
 		self._sign_in_link = ""
 		if not message:

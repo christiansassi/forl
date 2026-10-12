@@ -62,17 +62,19 @@ struct ClaudeProvider: Provider {
 		redirectPath: "/callback",
 		// The authorization page hands back a code rather than a token.
 		authorizeExtras: ["code": "true"],
-		headers: ["User-Agent": userAgent]
+		headers: ["User-Agent": userAgent],
+		manualRedirectURI: "https://platform.claude.com/oauth/code/callback"
 	)
 
 	/// Sign in to Claude in the browser and store what comes back.
 	///
-	/// - Parameter onAddress: Called once with the address to sign in at and
-	///   whether a browser was opened at it.
+	/// - Parameters:
+	///   - onAddress: Called with the address to sign in at and whether a browser opened.
+	///   - onCode: Receive the function for submitting a browser code when supported.
 	/// - Returns: Who is now signed in.
 	/// - Throws: `UsageError` when the sign-in was refused or not completed.
-	func signIn(onAddress: @Sendable @escaping (String, Bool) -> Void) async throws -> String {
-		let answer = try await OAuth.signIn(client: oauth, onAddress: onAddress)
+	func signIn(onAddress: @Sendable @escaping (String, Bool) -> Void, onCode: SignInCodeOffer? = nil) async throws -> String {
+		let answer = try await OAuth.signIn(client: oauth, onAddress: onAddress, onCode: onCode)
 		guard
 			let token = answer["access_token"] as? String,
 			!token.trimmingCharacters(in: .whitespaces).isEmpty

@@ -33,7 +33,7 @@ Until the first reading of a service arrives, its page is a skeleton: blocks
 where the plan, the rows and the countdown will be, pulsing slowly, so the page
 has the shape of what is coming instead of a word saying it is coming.
 
-Nothing here is a Tk widget, so anything that can be clicked registers the area
+Except for the sign-in code field, anything that can be clicked registers the area
 that reaches it and the canvas looks the pointer up there. Each of those also
 registers how to light itself, because a gear is an image and a word is canvas
 text and the two are lit differently. Whatever the pointer is over turns the
@@ -302,6 +302,7 @@ class Panel:
 		on_open_sign_in: Callable[[str], None],
 		on_toggle_metric: Callable[[str, str], None],
 		on_session_start_change: Callable[[str, SessionStart], None],
+		on_sign_in_code: Callable[[str, str], bool],
 	) -> None:
 		"""Create the panel as a hidden child of the application root window.
 
@@ -336,6 +337,9 @@ class Panel:
 				session start schedule whenever the user changes it. The panel
 				shows the schedule and does not store it. Callable taking one str
 				and one SessionStart and returning None.
+			on_sign_in_code: Submit a pasted browser code for the selected service.
+				Callable taking the provider key and code and returning bool;
+				raises ValueError when the code cannot be submitted.
 
 		Returns:
 			None.
@@ -354,6 +358,7 @@ class Panel:
 			("on_open_sign_in", on_open_sign_in),
 			("on_toggle_metric", on_toggle_metric),
 			("on_session_start_change", on_session_start_change),
+			("on_sign_in_code", on_sign_in_code),
 		):
 			if not callable(callback):
 				raise TypeError(f"{name} must be callable")
@@ -367,6 +372,7 @@ class Panel:
 		self._on_open_sign_in = on_open_sign_in
 		self._on_toggle_metric = on_toggle_metric
 		self._on_session_start_change = on_session_start_change
+		self._on_sign_in_code = on_sign_in_code
 		self._selected_key = providers[0].key
 		self._current = describe(self._selected_key)
 		self._palette: Palette = DARK_PALETTE
@@ -415,7 +421,7 @@ class Panel:
 		self._window.attributes("-topmost", True)
 		self._window.resizable(False, False)
 		self._window.bind("<Escape>", lambda _event: self.hide())
-		self._window.bind("<FocusOut>", lambda _event: self.hide())
+		self._window.bind("<FocusOut>", self._on_focus_out)
 		self._window.bind("<MouseWheel>", self._on_mouse_wheel)
 
 		self._canvas = tk.Canvas(
@@ -430,6 +436,11 @@ class Panel:
 		self._canvas.bind("<ButtonRelease-1>", self._on_release)
 		self._canvas.bind("<Motion>", self._on_motion)
 		self._canvas.bind("<Leave>", self._on_leave)
+		self._code_entry = tk.Entry(self._canvas, show="*", relief="solid", borderwidth=1, exportselection=False)
+		self._code_entry.bind("<Return>", lambda _event: self._submit_sign_in_code())
+		self._code_button = tk.Button(self._canvas, text="Continue", command=self._submit_sign_in_code, relief="flat", borderwidth=0)
+		self._code_attempt: tuple[str, str] | None = None
+		self._code_error = ""
 		self._apply_palette()
 
 		self._ticker = Ticker(self._window, self._on_frame)
@@ -644,7 +655,7 @@ class Panel:
 			# The address takes the place of the countdown's trailing space: a
 			# sign-in is in front of the reading, not beside it.
 			self._spinner_item = 0
-			return self._draw_sign_in_link(self._canvas.bbox(self._status_item)[3])
+			return self._draw_sign_in_link(self._canvas.bbox(self._status_item)[3], centered=False)
 
 		if self._current.refreshing:
 			size = self._unit(SPINNER_SIZE)
@@ -1701,11 +1712,8 @@ class Panel:
 	def _draw_sign_in_page(self, y: float) -> float:
 		"""Draw what a service nobody is signed in to shows: the way to sign in.
 
-		The same page the Mac app shows: the word that starts the sign-in, and
-		the address the sign-in is waiting at while one is under way. A sign-in
-		that failed or was abandoned leaves the page as it was before it
-		started, with nothing said about it, so trying again is the one thing
-		on offer.
+		Offer the browser address and manual code entry while sign-in is pending,
+		and explain a failed attempt so the user can try again.
 
 		Args:
 			y: Vertical cursor in device pixels. float.
@@ -1726,6 +1734,9 @@ class Panel:
 			self._underline_on_hover(button, "title", SIGN_IN_KEY)
 			self._add_hit((pad, y, right, y + height), SIGN_IN_KEY)
 		y += height
+		if view.sign_in_message and not view.signing_in:
+			message = self._text((pad, y), view.sign_in_message, "caption", self._palette.label_secondary, width=right - pad)
+			y = self._canvas.bbox(message)[3] + self._unit(LINK_CAPTION_GAP)
 		return self._draw_sign_in_link(y, centered=True) + self._unit(SIGN_IN_PAGE_PAD)
 
 	def _draw_sign_in_link(self, y: float, centered: bool) -> float:
@@ -1773,7 +1784,72 @@ class Panel:
 			anchor="n" if centered else "nw",
 			width=room,
 		)
-		return y + self._unit(SUBTITLE_OFFSET)
+		return self._draw_sign_in_code(y + self._unit(SUBTITLE_OFFSET))
+
+	def _draw_sign_in_code(self, y: float) -> float:
+		"""Draw a native code field for the current Claude sign-in.
+
+		Args:
+			y: Vertical cursor in device pixels. float.
+
+		Returns:
+			float: The vertical cursor after the field and any validation message.
+		"""
+		if not self._current.accepting_code:
+			return y
+		pad = self._unit(PANEL_PAD)
+		room = self._unit(PANEL_WIDTH - 2 * PANEL_PAD)
+		y += self._unit(LINK_GAP)
+		label = self._text((pad, y), "If the browser shows a code, paste it here:", "caption", self._palette.label_secondary, width=room)
+		y = self._canvas.bbox(label)[3] + self._unit(LINK_CAPTION_GAP)
+		font = self._font("row")
+		height = self._unit(30)
+		button_width = font.measure("Continue") + self._unit(16)
+		self._code_entry.configure(font=font, background=self._palette.surface, foreground=self._palette.label_primary, insertbackground=self._palette.label_primary)
+		self._code_button.configure(font=font, background=self._palette.surface, foreground=self._accent, activebackground=self._palette.surface, activeforeground=self._accent)
+		self._canvas.create_window(pad, y, window=self._code_entry, anchor="nw", width=room - button_width - self._unit(8), height=height, tags="content")
+		self._canvas.create_window(pad + room - button_width, y, window=self._code_button, anchor="nw", width=button_width, height=height, tags="content")
+		y += height
+		if self._code_error:
+			message = self._text((pad, y + self._unit(LINK_CAPTION_GAP)), self._code_error, "caption", self._palette.label_secondary, width=room)
+			y = self._canvas.bbox(message)[3]
+		return y
+
+	def _submit_sign_in_code(self) -> None:
+		"""Submit the field contents and show validation failures in the panel.
+
+		Returns:
+			None.
+		"""
+		try:
+			self._on_sign_in_code(self._selected_key, self._code_entry.get())
+		except (TypeError, ValueError) as error:
+			self._code_error = str(error)
+			self.refresh()
+		else:
+			self._code_entry.delete(0, tk.END)
+			self._code_error = ""
+
+	def _on_focus_out(self, _event: tk.Event) -> None:
+		"""Check focus after it moves between panel controls or to another app.
+
+		Args:
+			_event: The focus event. tkinter.Event.
+
+		Returns:
+			None.
+		"""
+		self._window.after_idle(self._dismiss_if_unfocused)
+
+	def _dismiss_if_unfocused(self) -> None:
+		"""Dismiss the panel only when focus has left the entire window.
+
+		Returns:
+			None.
+		"""
+		focused = self._window.focus_get()
+		if focused is None or focused.winfo_toplevel() != self._window:
+			self.hide()
 
 	def _open_sign_in_link(self) -> None:
 		"""Put the sign-in address on the clipboard and ask for it to be opened.
@@ -1826,6 +1902,7 @@ class Panel:
 		self._scroll_offset = 0.0
 
 		self._current = self._describe(self._selected_key)
+		self._sync_sign_in_code(self._current)
 		self._accent = readable_accent(self._current.provider.accent, self._palette)
 		pad = self._unit(PANEL_PAD)
 		y = self._draw_tabs(pad)
@@ -2053,6 +2130,21 @@ class Panel:
 		self._window.geometry(f"{width}x{height}+{x}+{y}")
 		self._scroll_to(previous_offset, height)
 
+	def _sync_sign_in_code(self, view: ProviderView) -> None:
+		"""Clear pasted input when its sign-in has ended or been replaced.
+
+		Args:
+			view: The selected provider's current sign-in state. ProviderView.
+
+		Returns:
+			None. Preserve the field contents while the same sign-in is waiting.
+		"""
+		attempt = (view.provider.key, view.sign_in_link) if view.accepting_code else None
+		if attempt != self._code_attempt:
+			self._code_entry.delete(0, tk.END)
+			self._code_error = ""
+			self._code_attempt = attempt
+
 	def refresh(self) -> None:
 		"""Redraw the panel from what the owner now reports, if it is open.
 
@@ -2063,6 +2155,7 @@ class Panel:
 		Returns:
 			None.
 		"""
+		self._sync_sign_in_code(self._describe(self._selected_key))
 		if self._visible:
 			self._layout()
 			self._start_animating()

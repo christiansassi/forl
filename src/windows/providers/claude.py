@@ -21,7 +21,7 @@ import re
 from typing import Any, Callable, NamedTuple
 
 from ..auth import oauth, store
-from ..auth.oauth import OAuthClient
+from ..auth.oauth import CodeOffer, OAuthClient
 from ..usage.errors import CredentialsError, UsageRequestError
 from ..schedule.session_start import MESSAGE_TEXT
 from ..usage.http import fetch_json, post_json
@@ -76,6 +76,7 @@ OAUTH = OAuthClient(
 	# chosen: a fixed port is a port that can already be taken.
 	redirect_port=0,
 	redirect_path="/callback",
+	manual_redirect_uri="https://platform.claude.com/oauth/code/callback",
 	# The authorization page hands back a code rather than a token.
 	authorize_extras=(("code", "true"),),
 	headers=(("User-Agent", USER_AGENT),),
@@ -199,7 +200,7 @@ def _profile(token: str) -> dict[str, Any]:
 		return {}
 
 
-def sign_in(on_address: Callable[[str, bool], None]) -> str:
+def sign_in(on_address: Callable[[str, bool], None], on_code: CodeOffer | None = None) -> str:
 	"""Sign in to Claude in the browser and store what comes back.
 
 	Blocks until the user finishes in the browser or gives up, so it belongs on
@@ -210,6 +211,8 @@ def sign_in(on_address: Callable[[str, bool], None]) -> str:
 			browser was opened at it, so the address can be offered to the user
 			when it was not. Callable taking one str and one bool and returning
 			None.
+		on_code: Called with the function for submitting a browser code during
+			this sign-in. CodeOffer or None.
 
 	Returns:
 		str: Who is now signed in, as the settings should name them.
@@ -218,7 +221,7 @@ def sign_in(on_address: Callable[[str, bool], None]) -> str:
 		CredentialsError: When the sign-in was not completed or was refused.
 		UsageRequestError: When an endpoint could not be reached.
 	"""
-	answer = oauth.sign_in(OAUTH, on_address)
+	answer = oauth.sign_in(OAUTH, on_address, on_code=on_code)
 	token = answer.get("access_token")
 	if not isinstance(token, str) or not token.strip():
 		raise CredentialsError(oauth.REJECTED_MESSAGE)

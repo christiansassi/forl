@@ -26,6 +26,13 @@ final class ProviderState: Identifiable {
 	private(set) var signInMessage = ""
 	/// The address a sign-in under way is waiting at, empty when none is.
 	private(set) var signInLink = ""
+	/// The full browser code, kept only while the sign-in is waiting.
+	var signInCode = ""
+	/// Why the last pasted code could not be submitted.
+	private(set) var signInCodeMessage = ""
+	private var submitCode: SignInCodeSubmission?
+	/// Whether the pending sign-in accepts a code from the browser.
+	var acceptingSignInCode: Bool { submitCode != nil }
 	/// Whether a reading is in flight.
 	private(set) var refreshing = false
 	/// Whether a sign-in is under way.
@@ -171,18 +178,27 @@ final class ProviderState: Identifiable {
 		defer {
 			signingIn = false
 			signInLink = ""
+			submitCode = nil
+			signInCode = ""
+			signInCodeMessage = ""
 			refreshAccount()
 		}
 
 		do {
-			_ = try await provider.signIn { [weak self] address, opened in
+			_ = try await provider.signIn(onAddress: { [weak self] address, opened in
 				Task { @MainActor in
-					self?.signInLink = address
-					self?.signInMessage = opened
+					guard let self, self.signingIn else { return }
+					self.signInLink = address
+					self.signInMessage = opened
 						? "Signing in. Finish in the browser."
 						: "No browser opened. Use the address below."
 				}
-			}
+			}, onCode: { [weak self] submit in
+				Task { @MainActor in
+					guard let self, self.signingIn else { return }
+					self.submitCode = submit
+				}
+			})
 			signInMessage = ""
 			// The reading on screen, if there is one, belongs to whoever was
 			// signed in before, so it goes rather than stands under the new name.
@@ -191,6 +207,23 @@ final class ProviderState: Identifiable {
 			signInMessage = error.errorDescription ?? OAuth.rejectedMessage
 		} catch {
 			signInMessage = error.localizedDescription
+		}
+	}
+
+	/// Submit the pasted browser code without starting another sign-in.
+	///
+	/// - Returns: Nothing. Invalid input leaves the pending sign-in available.
+	func submitSignInCode() {
+		do {
+			guard let submitCode, try submitCode(signInCode) else {
+				throw UsageError.credentials("This sign-in is no longer waiting. Try signing in again.")
+			}
+			self.submitCode = nil
+			signInCode = ""
+			signInCodeMessage = ""
+			signInMessage = "Finishing sign-in..."
+		} catch {
+			signInCodeMessage = error.localizedDescription
 		}
 	}
 
@@ -206,6 +239,9 @@ final class ProviderState: Identifiable {
 		prompted = false
 		snapshot = nil
 		signInLink = ""
+		submitCode = nil
+		signInCode = ""
+		signInCodeMessage = ""
 		signInMessage = "Signed out."
 		refreshAccount()
 	}

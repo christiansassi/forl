@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-from ..auth.oauth import OAuthClient
+from ..auth.oauth import CodeOffer, OAuthClient
 from ..usage.snapshot import UsageSnapshot
 from ..validation import require_member, require_non_empty_str
 from . import claude, codex
@@ -39,7 +39,8 @@ class Provider:
 		sign_in: Runs the browser sign-in and stores the result, returning who is
 			now signed in. Takes a callback, which it calls once with the address
 			to sign in at and whether a browser was opened at it. Blocks for as
-			long as the user takes. Callable taking one callable and returning
+			long as the user takes. The second callback receives the function
+			for submitting a browser code when supported. Callable returning
 			str; raises CredentialsError or UsageRequestError.
 		read: Takes one usage reading. Callable taking no arguments and returning
 			a UsageSnapshot; raises CredentialsError or UsageRequestError.
@@ -54,7 +55,7 @@ class Provider:
 	logo_file: str
 	accent: str
 	oauth: OAuthClient
-	sign_in: Callable[[Callable[[str, bool], None]], str]
+	sign_in: Callable[[Callable[[str, bool], None], CodeOffer | None], str]
 	read: Callable[[], UsageSnapshot]
 	start_session: Callable[[], None]
 

@@ -36,6 +36,8 @@ struct Redirect: Sendable {
 	var state: String = ""
 	/// What the provider said went wrong, empty when nothing did.
 	var error: String = ""
+	/// Whether the code came from the hosted manual callback.
+	var manual = false
 }
 
 /// A loopback port, held open, waiting for one authorization redirect.
@@ -44,7 +46,7 @@ final class LoopbackServer: @unchecked Sendable {
 	private let wantedPath: String
 	private let queue = DispatchQueue(label: "io.forl.loopback")
 	private var continuation: CheckedContinuation<Redirect, Error>?
-	private var finished = false
+	private var result: Result<Redirect, Error>?
 
 	/// Take a port now, so the browser has somewhere to come back to.
 	///
@@ -114,24 +116,62 @@ final class LoopbackServer: @unchecked Sendable {
 	/// - Returns: What the browser came back with.
 	/// - Throws: `UsageError.credentials` when nothing arrives in time.
 	func wait(timeout: TimeInterval) async throws -> Redirect {
-		try await withThrowingTaskGroup(of: Redirect.self) { group in
-			group.addTask { [self] in
-				try await withCheckedThrowingContinuation { waiting in
-					queue.async { [self] in
-						continuation = waiting
+		guard timeout.isFinite, (1...900).contains(timeout) else {
+			throw UsageError.credentials("timeout must be between 1 and 900 seconds.")
+		}
+		return try await withTaskCancellationHandler {
+			try await withCheckedThrowingContinuation { waiting in
+				queue.async { [self] in
+					if let result {
+						waiting.resume(with: result)
+						return
+					}
+					continuation = waiting
+					queue.asyncAfter(deadline: .now() + timeout) { [weak self] in
+						self?.finish(.failure(UsageError.credentials("Sign-in was not completed.")))
 					}
 				}
 			}
-			group.addTask {
-				try await Task.sleep(for: .seconds(timeout))
-				throw UsageError.credentials("Sign-in was not completed.")
-			}
-			defer { group.cancelAll() }
-			guard let first = try await group.next() else {
-				throw UsageError.credentials("Sign-in was not completed.")
-			}
-			return first
+		} onCancel: {
+			self.queue.async { [self] in finish(.failure(CancellationError())) }
 		}
+	}
+
+	/// Submit the browser's full code to the current sign-in wait.
+	///
+	/// - Parameters:
+	///   - code: The pasted authorization code in code#state form.
+	///   - expectedState: The state generated for this sign-in.
+	/// - Returns: Whether this code completed the pending wait.
+	/// - Throws: `UsageError.credentials` when code is malformed or from another sign-in.
+	func submitCode(_ code: String, expectedState: String) throws -> Bool {
+		guard !expectedState.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+			throw UsageError.credentials("expectedState must not be empty.")
+		}
+		let value = code.trimmingCharacters(in: .whitespacesAndNewlines)
+		let parts = value.components(separatedBy: "#")
+		guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty, value.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
+			throw UsageError.credentials("code is incomplete. Copy the full authorization code from the browser.")
+		}
+		guard parts[1] == expectedState else {
+			throw UsageError.credentials("code belongs to another sign-in. Copy the code from the current browser tab.")
+		}
+		return queue.sync {
+			guard result == nil else { return false }
+			finish(.success(Redirect(code: parts[0], state: expectedState, manual: true)))
+			return true
+		}
+	}
+
+	/// Record the first answer, including one received before wait starts.
+	///
+	/// - Parameter outcome: The redirect or failure to deliver on the listener queue.
+	/// - Returns: Nothing.
+	private func finish(_ outcome: Result<Redirect, Error>) {
+		guard result == nil else { return }
+		result = outcome
+		continuation?.resume(with: outcome)
+		continuation = nil
 	}
 
 	/// Stop listening and give the port back.
@@ -139,6 +179,7 @@ final class LoopbackServer: @unchecked Sendable {
 	/// - Returns: Nothing.
 	func close() {
 		listener.cancel()
+		queue.async { [self] in finish(.failure(CancellationError())) }
 	}
 
 	/// Read one connection's request line and answer it.
@@ -192,12 +233,7 @@ final class LoopbackServer: @unchecked Sendable {
 
 		// Recorded only once the page is on its way, so the caller can close the
 		// port the moment it sees this without cutting the answer short.
-		guard !finished else {
-			return
-		}
-		finished = true
-		continuation?.resume(returning: caught)
-		continuation = nil
+		finish(.success(caught))
 	}
 
 	/// Send one HTML page and close the connection behind it.

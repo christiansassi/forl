@@ -92,10 +92,14 @@ struct PanelView: View {
 			}
 			.buttonStyle(.plain)
 			.disabled(state.signingIn)
-			// A failed or abandoned sign-in goes back to this page as it was, with
-			// nothing said about it, so trying again is the one thing on offer.
+			if !state.signInMessage.isEmpty, !state.signingIn {
+				Text(state.signInMessage)
+					.font(.system(size: 11))
+					.foregroundStyle(.secondary)
+					.fixedSize(horizontal: false, vertical: true)
+			}
 			if !state.signInLink.isEmpty {
-				SignInLink(address: state.signInLink)
+				SignInControls(state: state)
 			}
 		}
 		.padding(.vertical, 12)
@@ -259,7 +263,7 @@ private struct ProviderSection: View {
 			}
 
 			if !state.signInLink.isEmpty {
-				SignInLink(address: state.signInLink).padding(.top, 12)
+				SignInControls(state: state).padding(.top, 12)
 			}
 		}
 	}
@@ -313,20 +317,43 @@ private struct MetricRow: View {
 	}
 }
 
-/// The address a sign-in under way is waiting at.
-private struct SignInLink: View {
-	/// Where the sign-in is waiting.
-	var address: String
+/// The browser address and manual code field for a pending sign-in.
+struct SignInControls: View {
+	/// The pending sign-in and its code submission function.
+	@Bindable var state: ProviderState
 	var body: some View {
-		if let url = URL(string: address) {
-			Text(instruction(url: url))
-				.font(.system(size: 11))
-				.foregroundStyle(.secondary)
-				.fixedSize(horizontal: false, vertical: true)
+		VStack(alignment: .leading, spacing: 8) {
+			if let url = URL(string: state.signInLink) {
+				Text(instruction(url: url))
+					.font(.system(size: 11))
+					.foregroundStyle(.secondary)
+					.fixedSize(horizontal: false, vertical: true)
+			}
+			if state.acceptingSignInCode {
+				Text("If the browser shows a code, paste it here:")
+					.font(.system(size: 11))
+					.foregroundStyle(.secondary)
+				HStack(spacing: 8) {
+					SecureField("Authorization code", text: $state.signInCode)
+						.textFieldStyle(.roundedBorder)
+						.onSubmit { state.submitSignInCode() }
+					Button("Continue") { state.submitSignInCode() }
+						.disabled(state.signInCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+				}
+				.controlSize(.small)
+				if !state.signInCodeMessage.isEmpty {
+					Text(state.signInCodeMessage)
+						.font(.system(size: 11))
+						.foregroundStyle(.red)
+						.fixedSize(horizontal: false, vertical: true)
+				}
+			}
 		}
 	}
 
 	/// Keep the full authorization URL in the link destination, never in its label.
+	/// - Parameter url: The address for the pending browser sign-in.
+	/// - Returns: The sign-in instruction with its clickable address.
 	private func instruction(url: URL) -> AttributedString {
 		var text = AttributedString("If the browser doesn’t open, ")
 		var link = AttributedString("click here")

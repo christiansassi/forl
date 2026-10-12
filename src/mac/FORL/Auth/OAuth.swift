@@ -49,6 +49,8 @@ struct OAuthClient: Sendable {
 	/// Request headers this provider wants on a token request, such as the user
 	/// agent an endpoint behind a bot check insists on.
 	var headers: [String: String] = [:]
+	/// Hosted callback that displays a code to paste, or nil when unsupported.
+	var manualRedirectURI: String? = nil
 
 	/// Return the redirect to name, for the port being listened on.
 	///
@@ -56,12 +58,20 @@ struct OAuthClient: Sendable {
 	/// because that is the spelling the providers accept, and the exchange
 	/// compares the two as text: the same string must go in both requests.
 	///
-	/// - Parameter port: The port being listened on.
+	/// - Parameters:
+	///   - port: The port being listened on.
+	///   - manual: Whether to use the hosted code callback.
 	/// - Returns: The redirect URI.
-	func redirectURI(port: UInt16) -> String {
-		"http://localhost:\(port)\(redirectPath)"
+	func redirectURI(port: UInt16, manual: Bool = false) -> String {
+		manual ? (manualRedirectURI ?? "") : "http://localhost:\(port)\(redirectPath)"
 	}
 }
+
+/// Accept one full code from the browser for the pending sign-in.
+typealias SignInCodeSubmission = @Sendable (String) throws -> Bool
+
+/// Offer the function for submitting a code to the interface.
+typealias SignInCodeOffer = @Sendable (@escaping SignInCodeSubmission) -> Void
 
 /// The sign-in and the renewal, held with one provider at a time.
 enum OAuth {
@@ -81,17 +91,20 @@ enum OAuth {
 	///   - port: The loopback port being listened on.
 	///   - challenge: The proof key challenge.
 	///   - state: The value the provider must echo back.
+	///   - manual: Whether to ask for a code at the hosted callback.
 	/// - Returns: The full authorization URL.
 	static func authorizationURL(
 		client: OAuthClient,
 		port: UInt16,
 		challenge: String,
-		state: String
+		state: String,
+		manual: Bool = false
 	) -> URL? {
+		guard !manual || client.manualRedirectURI != nil else { return nil }
 		var fields = client.authorizeExtras
 		fields["client_id"] = client.clientID
 		fields["response_type"] = "code"
-		fields["redirect_uri"] = client.redirectURI(port: port)
+		fields["redirect_uri"] = client.redirectURI(port: port, manual: manual)
 		fields["scope"] = client.scope
 		fields["code_challenge"] = challenge
 		fields["code_challenge_method"] = "S256"
@@ -109,13 +122,15 @@ enum OAuth {
 	///   - client: The provider's client.
 	///   - onAddress: Called once with the address to sign in at and whether a
 	///     browser was opened at it.
+	///   - onCode: Receive the function for submitting a code when supported.
 	/// - Returns: The token endpoint's answer.
 	/// - Throws: `UsageError.credentials` when the port is taken, the user did
 	///   not finish, or the provider refused; `UsageError.request` when the
 	///   token endpoint could not be reached.
 	static func signIn(
 		client: OAuthClient,
-		onAddress: @Sendable @escaping (String, Bool) -> Void
+		onAddress: @Sendable @escaping (String, Bool) -> Void,
+		onCode: SignInCodeOffer? = nil
 	) async throws -> [String: Any] {
 		let server = try LoopbackServer(port: client.redirectPort, path: client.redirectPath)
 		defer { server.close() }
@@ -123,18 +138,25 @@ enum OAuth {
 
 		let port = server.port
 		let verifier = PKCE.verifier()
+		let challenge = PKCE.challenge(for: verifier)
 		let state = PKCE.state()
 		guard let url = authorizationURL(
 			client: client,
 			port: port,
-			challenge: PKCE.challenge(for: verifier),
+			challenge: challenge,
 			state: state
 		) else {
 			throw UsageError.credentials("The sign-in address could not be built.")
 		}
 
 		let opened = NSWorkspace.shared.open(url)
-		onAddress(url.absoluteString, opened)
+		let manualURL = client.manualRedirectURI != nil && onCode != nil
+			? authorizationURL(client: client, port: port, challenge: challenge, state: state, manual: true)
+			: nil
+		onAddress((manualURL ?? url).absoluteString, opened)
+		if manualURL != nil {
+			onCode? { code in try server.submitCode(code, expectedState: state) }
+		}
 
 		let redirect = try await server.wait(timeout: signInTimeout)
 		if !redirect.error.isEmpty {
@@ -146,7 +168,7 @@ enum OAuth {
 		guard !redirect.code.isEmpty else {
 			throw UsageError.credentials("Sign-in was not completed.")
 		}
-		return try await exchange(client: client, port: port, code: redirect.code, verifier: verifier, state: state)
+		return try await exchange(client: client, port: port, code: redirect.code, verifier: verifier, state: state, manual: redirect.manual)
 	}
 
 	/// Exchange an authorization code for tokens.
@@ -163,6 +185,7 @@ enum OAuth {
 	///   - code: The code the redirect carried.
 	///   - verifier: The verifier whose challenge went with the request.
 	///   - state: The state that went with the request.
+	///   - manual: Whether the code came from the hosted manual callback.
 	/// - Returns: The token endpoint's answer.
 	/// - Throws: `UsageError.credentials` when the endpoint refuses the code.
 	static func exchange(
@@ -170,13 +193,17 @@ enum OAuth {
 		port: UInt16,
 		code: String,
 		verifier: String,
-		state: String
+		state: String,
+		manual: Bool = false
 	) async throws -> [String: Any] {
-		try await tokenRequest(client: client, fields: [
+		guard !manual || client.manualRedirectURI != nil else {
+			throw UsageError.credentials("Manual sign-in is unsupported for this provider.")
+		}
+		return try await tokenRequest(client: client, fields: [
 			"grant_type": "authorization_code",
 			"code": code,
 			"client_id": client.clientID,
-			"redirect_uri": client.redirectURI(port: port),
+			"redirect_uri": client.redirectURI(port: port, manual: manual),
 			"code_verifier": verifier,
 			"state": state,
 		])

@@ -24,7 +24,7 @@ import time
 from typing import Any, Callable
 
 from ..auth import jwt, oauth, store
-from ..auth.oauth import OAuthClient
+from ..auth.oauth import CodeOffer, OAuthClient
 from ..usage.errors import CredentialsError, UsageAuthError, UsageRequestError
 from ..schedule.session_start import MESSAGE_TEXT
 from ..usage.http import fetch_json, post_json
@@ -146,7 +146,7 @@ def _account_name(claims: dict[str, Any]) -> str:
 	return ""
 
 
-def sign_in(on_address: Callable[[str, bool], None]) -> str:
+def sign_in(on_address: Callable[[str, bool], None], on_code: CodeOffer | None = None) -> str:
 	"""Sign in to ChatGPT in the browser and store what comes back.
 
 	Blocks until the user finishes in the browser or gives up, so it belongs on
@@ -157,6 +157,8 @@ def sign_in(on_address: Callable[[str, bool], None]) -> str:
 			browser was opened at it, so the address can be offered to the user
 			when it was not. Callable taking one str and one bool and returning
 			None.
+		on_code: The shared provider callback for manual code entry. ChatGPT
+			does not offer code entry. CodeOffer or None.
 
 	Returns:
 		str: Who is now signed in, as the settings should name them.
@@ -165,7 +167,7 @@ def sign_in(on_address: Callable[[str, bool], None]) -> str:
 		CredentialsError: When the sign-in was not completed or was refused.
 		UsageRequestError: When the token endpoint could not be reached.
 	"""
-	answer = oauth.sign_in(OAUTH, on_address)
+	answer = oauth.sign_in(OAUTH, on_address, on_code=on_code)
 	token = answer.get("access_token")
 	if not isinstance(token, str) or not token.strip():
 		raise CredentialsError(oauth.REJECTED_MESSAGE)

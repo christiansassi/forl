@@ -74,11 +74,13 @@ class Redirect(NamedTuple):
 		code: The authorization code, empty when the provider sent none. str.
 		state: The state value the provider echoed back. str.
 		error: What the provider said went wrong, empty when nothing did. str.
+		manual: Whether the code came from the hosted manual callback. bool.
 	"""
 
 	code: str
 	state: str
 	error: str
+	manual: bool = False
 
 
 class _Server(socketserver.ThreadingTCPServer):
@@ -107,7 +109,24 @@ class _Server(socketserver.ThreadingTCPServer):
 		self.wanted_path = path
 		self.caught: Redirect | None = None
 		self.arrived = threading.Event()
+		self.lock = threading.Lock()
 		super().__init__((HOST, port), _Handler)
+
+	def finish(self, redirect: Redirect) -> bool:
+		"""Record the first answer and wake the sign-in worker.
+
+		Args:
+			redirect: The browser or manually submitted answer. Redirect.
+
+		Returns:
+			bool: Whether this answer completed the pending wait.
+		"""
+		with self.lock:
+			if self.arrived.is_set():
+				return False
+			self.caught = redirect
+			self.arrived.set()
+			return True
 
 
 class _Handler(http.server.BaseHTTPRequestHandler):
@@ -175,8 +194,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
 
 		# Recorded only once the page is on its way, so the caller can close the
 		# port the moment it sees this without cutting the answer short.
-		self.server.caught = caught
-		self.server.arrived.set()
+		self.server.finish(caught)
 
 
 class RedirectCatcher:
@@ -239,7 +257,31 @@ class RedirectCatcher:
 		Returns:
 			None.
 		"""
+		with self._server.lock:
+			self._server.arrived.set()
 		self._server.server_close()
+
+	def submit_code(self, code: str, expected_state: str) -> bool:
+		"""Submit the browser's code to the current sign-in wait.
+
+		Args:
+			code: The full browser code in code#state form. str, non-empty.
+			expected_state: The state generated for this sign-in. str, non-empty.
+
+		Returns:
+			bool: Whether the code was accepted before another answer or timeout.
+
+		Raises:
+			ValueError: When code is malformed or belongs to another sign-in.
+		"""
+		require_non_empty_str(code, "code")
+		require_non_empty_str(expected_state, "expected_state")
+		value, separator, state = code.strip().partition("#")
+		if not value or not separator or not state or "#" in state or any(character.isspace() for character in code.strip()):
+			raise ValueError("code is incomplete. Copy the full authorization code from the browser.")
+		if state != expected_state:
+			raise ValueError("code belongs to another sign-in. Copy the code from the current browser tab.")
+		return self._server.finish(Redirect(value, expected_state, "", manual=True))
 
 	def wait(self, timeout: float) -> Redirect | None:
 		"""Serve requests until the redirect arrives or the time runs out.

@@ -157,6 +157,9 @@ private struct AccountRow: View {
 				.font(.system(size: 11))
 				.foregroundStyle(.secondary)
 				.padding(.top, 2)
+			if !state.signInLink.isEmpty {
+				SignInControls(state: state).padding(.top, 12)
+			}
 		}
 	}
 }
