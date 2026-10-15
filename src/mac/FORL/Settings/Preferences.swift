@@ -21,6 +21,8 @@ final class Preferences {
 
 	/// Whether the app starts when the user logs in.
 	var startAtLogin: Bool { didSet { defaults.set(startAtLogin, forKey: Key.startAtLogin) } }
+	/// Whether the panel names the plan, such as "Max 5x", beside the service.
+	var showPlan: Bool { didSet { defaults.set(showPlan, forKey: Key.showPlan) } }
 	/// Which metrics the user chose to show, keyed by provider.
 	var selection: [String: [String]] {
 		didSet { defaults.set(selection, forKey: Key.selection) }
@@ -33,6 +35,7 @@ final class Preferences {
 	/// The names the values are stored under.
 	private enum Key {
 		static let startAtLogin = "startAtLogin"
+		static let showPlan = "showPlan"
 		static let selection = "selection"
 		static let panelSelection = "panelSelection"
 	}
@@ -45,6 +48,9 @@ final class Preferences {
 	init(defaults: UserDefaults = .shared) {
 		self.defaults = defaults
 		startAtLogin = defaults.object(forKey: Key.startAtLogin) as? Bool ?? false
+		// On unless turned off, since the plan is what every percentage is a
+		// percentage of.
+		showPlan = defaults.object(forKey: Key.showPlan) as? Bool ?? true
 		selection = defaults.object(forKey: Key.selection) as? [String: [String]] ?? [:]
 		panelSelection = defaults.object(forKey: Key.panelSelection) as? [String: [String]] ?? [:]
 	}

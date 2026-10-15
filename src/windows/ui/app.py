@@ -36,7 +36,7 @@ from ..providers import Provider
 from ..render.icon import render_icon
 from ..render.svg import ASSETS_DIR
 from ..render.theme import LABEL_PRIMARY
-from ..settings.store import load_start_on_startup, save_start_on_startup
+from ..settings.store import load_show_plan, load_start_on_startup, save_show_plan, save_start_on_startup
 from ..system import enable_dpi_awareness, set_startup_entry
 from ..validation import require_member, require_non_empty_str, require_positive_int, require_type
 from .core import DEFAULT_POLL_SECONDS, QUIT_KEY, MetricReading, ProviderView, WidgetCore, quit_rows
@@ -121,6 +121,7 @@ class WidgetApp:
 			providers,
 			describe=self._describe,
 			on_startup_change=self._set_startup,
+			on_show_plan_change=save_show_plan,
 			on_sign_in=lambda key: self._core(key).sign_in_now(),
 			on_sign_out=lambda key: self._core(key).sign_out(),
 			on_open_sign_in=lambda key: self._core(key).open_sign_in_link(),
@@ -129,6 +130,7 @@ class WidgetApp:
 			on_toggle_panel_metric=lambda key, metric: self._core(key).toggle_panel_metric(metric),
 		)
 		self._panel.set_startup(self._start_on_startup)
+		self._panel.set_show_plan(load_show_plan())
 		self._menu = TrayMenu(self._root, on_choose=self._choose)
 		self._trays = {provider.key: self._tray_for(provider) for provider in providers}
 		self._app_icon = TrayIcons(

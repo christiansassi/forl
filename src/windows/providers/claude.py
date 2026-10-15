@@ -73,10 +73,21 @@ OAUTH = OAuthClient(
 	headers=(("User-Agent", USER_AGENT),),
 )
 
-# Rate limit tiers are named like "default_claude_max_5x": the plan, and for
-# Max the multiplier, which is what decides what every percentage on screen is
-# a percentage of and so belongs next to the plan name.
-TIER_PATTERN = re.compile(r"^default_claude_(?P<name>[a-z_]+?)(?:_(?P<multiplier>\d+)x)?$")
+# The plan is named by the organization's type. Its rate limit tier is no help
+# there: Free and Pro share "default_claude_ai", and a Team Premium seat reports
+# "default_claude_max_5x". The tier is read only for the size of a Max plan,
+# which decides what every percentage on screen is a percentage of.
+ORGANIZATION_PLANS = {
+	"claude_pro": "Pro",
+	"claude_max": "Max",
+	"claude_team": "Team",
+	"claude_enterprise": "Enterprise",
+}
+MAX_PLAN = "Max"
+PRO_PLAN = "Pro"
+FREE_PLAN = "Free"
+TIER_PREFIX = "default_claude_"
+MAX_TIER_PATTERN = re.compile(r"^default_claude_max_(?P<multiplier>\d+)x$")
 UNKNOWN_PLAN = "Unknown"
 
 SESSION_KIND = "session"
@@ -130,30 +141,37 @@ def _section(document: dict[str, Any], name: str) -> dict[str, Any]:
 def _plan_label(profile: dict[str, Any]) -> str:
 	"""Return the plan as it is named to the user, including the multiplier.
 
-	A Max subscription comes in more than one size, and which one is in force
-	decides what every percentage on screen is a percentage of, so the
-	multiplier belongs next to the plan name. The rate limit tier names both;
-	the flags on the account are read only when it names neither.
+	The organization's type names the plan. An account whose type is missing or
+	new is named by its flags instead, and one with neither flag but with a rate
+	limit tier is on the free plan. A Max plan comes in more than one size, and
+	which one is in force decides what every percentage on screen is a
+	percentage of, so the multiplier the tier carries goes next to it.
 
 	Args:
 		profile: The decoded account endpoint response. dict.
 
 	Returns:
-		str: Text such as "Max 5x", or "Pro", or "Unknown" when nothing in the
-		response says.
+		str: Text such as "Max 5x", "Pro", "Team" or "Free", or "Unknown" when
+		nothing in the response says.
 	"""
-	match = TIER_PATTERN.match(str(_section(profile, "organization").get("rate_limit_tier") or ""))
-	if match:
-		name = match.group("name").replace("_", " ").title()
-		multiplier = match.group("multiplier")
-		return f"{name} {multiplier}x" if multiplier else name
-
+	organization = _section(profile, "organization")
 	account = _section(profile, "account")
-	if account.get("has_claude_max"):
-		return "Max"
-	if account.get("has_claude_pro"):
-		return "Pro"
-	return UNKNOWN_PLAN
+	tier = str(organization.get("rate_limit_tier") or "")
+	max_tier = MAX_TIER_PATTERN.match(tier)
+
+	name = ORGANIZATION_PLANS.get(str(organization.get("organization_type") or ""))
+	if name is None:
+		if account.get("has_claude_max") or max_tier:
+			name = MAX_PLAN
+		elif account.get("has_claude_pro"):
+			name = PRO_PLAN
+		elif tier.startswith(TIER_PREFIX):
+			name = FREE_PLAN
+		else:
+			return UNKNOWN_PLAN
+	if name == MAX_PLAN and max_tier:
+		return f"{name} {max_tier.group('multiplier')}x"
+	return name
 
 
 def _account_name(profile: dict[str, Any]) -> str:

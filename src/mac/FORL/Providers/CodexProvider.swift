@@ -183,15 +183,49 @@ struct CodexProvider: Provider {
 		return ""
 	}
 
+	/// The plans as the Codex client names them to its own users, keyed by the
+	/// plan_type the usage endpoint reports.
+	private static let planNames = [
+		"free": "Free",
+		"go": "Go",
+		"plus": "Plus",
+		"prolite": "Pro 100",
+		"pro": "Pro 200",
+		"promax": "Pro 500",
+		"team": "Business",
+		"self_serve_business_usage_based": "Business",
+		"self_serve_business_prolite": "Business Premium",
+		"business": "Enterprise",
+		"enterprise": "Enterprise",
+		"ent26": "Enterprise",
+		"enterprise_cbp_usage_based": "Enterprise",
+		"enterprise_cbp_automation": "Enterprise (Automation)",
+		"edu": "Edu",
+		"edu_plus": "Edu Plus",
+		"edu_pro": "Edu Pro",
+	]
+
+	/// Return a plan as the Codex client names it.
+	///
+	/// - Parameter planType: The plan_type field of the usage response.
+	/// - Returns: Text such as "Plus" or "Pro 100", the value's words with
+	///   capitals for a plan not in the list, which a new plan would be, or
+	///   "Unknown" when the field is missing.
+	static func planLabel(_ planType: String?) -> String {
+		let key = (planType ?? "").trimmingCharacters(in: .whitespaces).lowercased()
+		guard !key.isEmpty else {
+			return "Unknown"
+		}
+		return planNames[key] ?? key.replacingOccurrences(of: "_", with: " ").capitalized
+	}
+
 	/// Build a usage snapshot from a decoded ChatGPT usage response.
 	///
 	/// - Parameter document: The decoded JSON body returned by the endpoint.
 	/// - Returns: The parsed reading. It always carries a session window,
 	///   reading 0 percent when the response reports none.
 	static func parse(_ document: [String: Any]) -> UsageSnapshot {
-		let plan = (document["plan_type"] as? String ?? "unknown")
-			.replacingOccurrences(of: "_", with: " ")
-			.capitalized
+		let plan = planLabel(document["plan_type"] as? String)
 		let rateLimit = section(document, "rate_limit")
 		let session = window(rateLimit["primary_window"], key: sessionKey, label: sessionLabel)
 		let weekly = window(rateLimit["secondary_window"], key: weeklyKey, label: weeklyLabel)

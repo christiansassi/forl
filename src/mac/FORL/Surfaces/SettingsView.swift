@@ -82,34 +82,22 @@ struct SettingsView: View {
 				.tint(store.state(for: selectedProviderKey)?.provider.accent ?? .accentColor)
 			}
 
-			if let state = store.state(for: selectedProviderKey), let snapshot = state.snapshot {
-				let key = state.provider.key
-				Spacer().frame(height: 22)
-				Text("Panel")
-					.font(.system(size: 11, weight: .semibold))
-					.foregroundStyle(.secondary)
-					.padding(.bottom, 10)
-				MetricChecklist(
-					snapshot: snapshot,
-					accent: state.provider.accent,
-					chosen: store.preferences.panelShown(for: key),
-					onToggle: { store.preferences.togglePanel($0, for: key) }
-				)
+			HStack {
+				Text("Show plan")
+				Spacer()
+				Toggle("Show plan", isOn: Binding(
+					get: { store.preferences.showPlan },
+					set: { store.preferences.showPlan = $0 }
+				))
+				.labelsHidden()
+				.fixedSize()
+				.tint(store.state(for: selectedProviderKey)?.provider.accent ?? .accentColor)
+			}
+			.padding(.top, 10)
 
+			if let state = store.state(for: selectedProviderKey), let snapshot = state.snapshot {
 				Spacer().frame(height: 22)
-				Text("Show")
-					.font(.system(size: 11, weight: .semibold))
-					.foregroundStyle(.secondary)
-					.padding(.bottom, 10)
-				MetricChecklist(
-					snapshot: snapshot,
-					accent: state.provider.accent,
-					chosen: store.preferences.selected(for: key),
-					onToggle: {
-						store.preferences.toggle($0, for: key)
-						store.publish()
-					}
-				)
+				ShowTable(state: state, snapshot: snapshot, store: store)
 			}
 		}
 		.toggleStyle(.switch)
@@ -177,33 +165,66 @@ private struct AccountRow: View {
 	}
 }
 
-/// One checkbox per usage a reading reports, ticked for the ones chosen.
+/// Every usage a reading reports, with a checkbox for the panel and one for
+/// the menu bar.
 ///
-/// The Panel section, which picks the rows the panel shows, and the Show
-/// section, which picks the menu bar items, are both this list.
-private struct MetricChecklist: View {
+/// The section heading shares its line with the headings of the two columns,
+/// so the table needs no line of its own for them.
+private struct ShowTable: View {
+	/// The provider to draw.
+	var state: ProviderState
 	/// The reading that names the usages there are.
 	var snapshot: UsageSnapshot
-	/// The color of a ticked box.
-	var accent: Color
-	/// Keys of the usages ticked.
-	var chosen: [String]
-	/// Called with a usage's key when its box is clicked.
-	var onToggle: (String) -> Void
+	/// Everything the app is showing, for both selections.
+	@Bindable var store: UsageStore
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 0) {
+		let key = state.provider.key
+		// A grid makes each checkbox column as wide as its heading and centers
+		// the boxes under it, and its last column ends where the switches above
+		// it do, so the headings line up with them.
+		Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
+			GridRow {
+				Text("Show")
+					.frame(maxWidth: .infinity, alignment: .leading)
+					.padding(.bottom, 6)
+				Text("Panel")
+					.gridColumnAlignment(.center)
+				Text("Menu bar")
+					.gridColumnAlignment(.center)
+			}
+			.font(.system(size: 11, weight: .semibold))
+			.foregroundStyle(.secondary)
+
 			ForEach(snapshot.metrics) { metric in
-				Toggle(metric.label, isOn: Binding(
-					get: { chosen.contains(metric.key) },
-					set: { _ in onToggle(metric.key) }
-				))
-				.toggleStyle(.checkbox)
-				.tint(accent)
-				.font(.system(size: 12))
-				.frame(minHeight: 20, alignment: .leading)
-				.padding(.vertical, 1)
+				GridRow {
+					Text(metric.label)
+						.font(.system(size: 12))
+						.lineLimit(1)
+						.frame(minHeight: 20)
+					checkbox(metric.label, isOn: store.preferences.panelShown(for: key).contains(metric.key)) {
+						store.preferences.togglePanel(metric.key, for: key)
+					}
+					checkbox(metric.label, isOn: store.preferences.selected(for: key).contains(metric.key)) {
+						store.preferences.toggle(metric.key, for: key)
+						store.publish()
+					}
+				}
 			}
 		}
+	}
+
+	/// Return one checkbox, centered under its column's heading.
+	///
+	/// - Parameters:
+	///   - label: What the box is for, read out by accessibility tools.
+	///   - isOn: Whether the box is ticked.
+	///   - toggle: Called when the box is clicked.
+	/// - Returns: The checkbox.
+	private func checkbox(_ label: String, isOn: Bool, toggle: @escaping () -> Void) -> some View {
+		Toggle(label, isOn: Binding(get: { isOn }, set: { _ in toggle() }))
+			.toggleStyle(.checkbox)
+			.labelsHidden()
+			.tint(state.provider.accent)
 	}
 }

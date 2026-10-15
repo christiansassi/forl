@@ -115,6 +115,7 @@ PANEL_VIEWS = frozenset((USAGE_VIEW, SETTINGS_VIEW))
 GEAR_KEY = "gear"
 BACK_KEY = "back"
 STARTUP_KEY = "startup"
+SHOW_PLAN_KEY = "show_plan"
 ACCOUNT_KEY = "account"
 SIGN_IN_KEY = "sign_in"
 SIGN_IN_LINK_KEY = "sign_in_link"
@@ -127,9 +128,12 @@ PANEL_KEY_PREFIX = "panel:"
 SETTINGS_TITLE = "Settings"
 GENERAL_TITLE = "General"
 ACCOUNT_TITLE = "Account"
-PANEL_TITLE = "Panel"
 SHOW_TITLE = "Show"
+# The two columns of the Show section: the rows of this panel, and the icons
+# in the notification area.
+SHOW_COLUMNS = ("Panel", "Tray")
 STARTUP_LABEL = "Start at login"
+SHOW_PLAN_LABEL = "Show plan"
 SIGN_OUT_LABEL = "Sign out"
 SIGN_IN_LABEL = "Sign in"
 SIGNED_IN_LABEL = "Signed in"
@@ -159,8 +163,9 @@ ACCOUNT_MARK_SIZE = 14
 ACCOUNT_MARK_GAP = 8
 SHOW_LABEL_GAP = 10
 SHOW_ROW_HEIGHT = 22
+# Space between the two checkbox columns of the Show section.
+SHOW_COLUMN_GAP = 22
 CHECKBOX_SIZE = 14
-CHECKBOX_GAP = 8
 
 SWITCH_WIDTH = 40
 SWITCH_HEIGHT = 24
@@ -247,6 +252,7 @@ class Panel:
 		providers: tuple[Provider, ...],
 		describe: Callable[[str], ProviderView],
 		on_startup_change: Callable[[bool], None],
+		on_show_plan_change: Callable[[bool], None],
 		on_sign_in: Callable[[str], None],
 		on_sign_out: Callable[[str], None],
 		on_open_sign_in: Callable[[str], None],
@@ -269,6 +275,11 @@ class Panel:
 				the start at login switch. The panel shows the switch and does
 				not store or act on it. Callable taking one bool and returning
 				None.
+			on_show_plan_change: Called with the new value whenever the user
+				works the show plan switch, which says whether the plan is named
+				beside the service. The panel follows the switch itself and
+				leaves storing it to the owner. Callable taking one bool and
+				returning None.
 			on_sign_in: Called with a service's key when the user asks to sign
 				in to it. Runs the browser sign-in, which takes as long as the
 				user does, so it belongs somewhere other than the thread this
@@ -302,6 +313,7 @@ class Panel:
 		for name, callback in (
 			("describe", describe),
 			("on_startup_change", on_startup_change),
+			("on_show_plan_change", on_show_plan_change),
 			("on_sign_in", on_sign_in),
 			("on_sign_out", on_sign_out),
 			("on_open_sign_in", on_open_sign_in),
@@ -315,7 +327,14 @@ class Panel:
 		self._providers = providers
 		self._keys = frozenset(provider.key for provider in providers)
 		self._describe = describe
-		self._on_startup_change = on_startup_change
+		# The switches of the General section, each with the value it shows and
+		# who to tell when the user works it.
+		self._flag_callbacks: dict[str, Callable[[bool], None]] = {
+			STARTUP_KEY: on_startup_change,
+			SHOW_PLAN_KEY: on_show_plan_change,
+		}
+		self._flags = {STARTUP_KEY: True, SHOW_PLAN_KEY: True}
+		self._switches: dict[str, Switch] = {}
 		self._on_sign_in = on_sign_in
 		self._on_sign_out = on_sign_out
 		self._on_open_sign_in = on_open_sign_in
@@ -328,12 +347,10 @@ class Panel:
 		self._accent = readable_accent(self._current.provider.accent, self._palette)
 		self._visible = False
 		self._view = USAGE_VIEW
-		self._start_on_startup = True
 		self._hits: list[tuple[tuple[float, float, float, float], str]] = []
 		self._lit: dict[str, Callable[[bool], None]] = {}
 		self._control_photos: list[ImageTk.PhotoImage] = []
 		self._hovered = ""
-		self._switch: Switch | None = None
 		self._bars: list[tuple[CapsuleBar, Spring]] = []
 		self._springs: dict[str, Spring] = {}
 		self._content_height = 0
@@ -873,13 +890,13 @@ class Panel:
 			self._palette.label_primary,
 		)
 
-		if self._loading():
+		if self._loading() and self._flags[SHOW_PLAN_KEY]:
 			title_box = self._canvas.bbox(title)
 			height = self._unit(SKELETON_CAPTION_HEIGHT)
 			middle = self._text_middle(y, "title")
 			left = title_box[2] + self._unit(PLAN_GAP)
 			self._skeleton_block((left, middle - height / 2.0, left + self._unit(SKELETON_PLAN_WIDTH), middle + height / 2.0))
-		elif self._current.snapshot is not None:
+		elif self._current.snapshot is not None and self._flags[SHOW_PLAN_KEY]:
 			# Both runs are anchored by the top of their line box, so sitting the
 			# smaller one lower by the difference in ascent puts the two on one
 			# baseline. Matching the bottoms instead would drop it, because a
@@ -1115,9 +1132,9 @@ class Panel:
 		"""Draw every setting, in the groups the Mac app puts them in.
 
 		Account comes first, with who is signed in to the service of the tab,
-		then General, with what applies to the whole widget. Panel lists which
-		of its usages the panel shows and Show, last, which the tray icons show,
-		both once there is a reading to say what those are.
+		then General, with what applies to the whole widget. Show, last, lists
+		every usage once there is a reading to say what those are, with one
+		column of checkboxes for the panel and one for the tray icons.
 
 		Args:
 			y: Vertical cursor in device pixels. float.
@@ -1128,12 +1145,9 @@ class Panel:
 		y = self._draw_section_label(ACCOUNT_TITLE, y, SECTION_LABEL_GAP)
 		y = self._draw_account_row(y)
 		y = self._draw_section_label(GENERAL_TITLE, y + self._unit(SETTINGS_SECTION_GAP), SECTION_LABEL_GAP)
-		y = self._draw_startup_row(y)
+		y = self._draw_general_rows(y)
 		if self._current.groups:
-			y = self._draw_section_label(PANEL_TITLE, y + self._unit(SETTINGS_SECTION_GAP), SHOW_LABEL_GAP)
-			y = self._draw_metric_checklist(y, self._current.in_panel, PANEL_KEY_PREFIX)
-			y = self._draw_section_label(SHOW_TITLE, y + self._unit(SETTINGS_SECTION_GAP), SHOW_LABEL_GAP)
-			y = self._draw_metric_checklist(y, self._current.displayed, SHOW_KEY_PREFIX)
+			y = self._draw_show_table(y + self._unit(SETTINGS_SECTION_GAP))
 		return self._draw_sign_in_link(y)
 
 	def _draw_section_label(self, title: str, y: float, gap: float) -> float:
@@ -1151,55 +1165,88 @@ class Panel:
 		item = self._text((self._unit(PANEL_PAD), y), title, "caption_strong", self._palette.label_secondary)
 		return self._canvas.bbox(item)[3] + self._unit(gap)
 
-	def _draw_metric_checklist(self, y: float, checked_keys: frozenset[str], prefix: str) -> float:
-		"""Draw one checkbox per usage the reading reports.
+	def _draw_show_table(self, y: float) -> float:
+		"""Draw the Show section: every usage, with a checkbox for the panel and one for the tray.
 
-		The Panel section, which picks the rows the panel shows, and the Show
-		section, which picks the tray icons, are both this list. Every box can be
-		unchecked: an empty panel keeps its heading and footer, and the FORL icon
-		appears in the tray once no usage icon is left.
+		The section heading shares its line with the headings of the two
+		columns, so the table needs no line of its own for them. Every box can
+		be unchecked: an empty panel keeps its heading and footer, and the FORL
+		icon appears in the tray once no usage icon is left.
 
 		Args:
-			y: Vertical cursor in device pixels. float.
-			checked_keys: Keys of the usages to draw checked. frozenset of str.
-			prefix: What each row's click area is keyed by, before the usage's
-				key, which says which list it belongs to. str, non-empty.
+			y: Vertical cursor in device pixels, where the heading goes. float.
 
 		Returns:
 			float: The vertical cursor after the last row.
 		"""
-		require_type(checked_keys, frozenset, "checked_keys")
-		require_non_empty_str(prefix, "prefix")
 		pad = self._unit(PANEL_PAD)
 		right = self._unit(PANEL_WIDTH) - pad
 		size = max(1, int(round(self._unit(CHECKBOX_SIZE))))
+		gap = self._unit(SHOW_COLUMN_GAP)
+		# Each column is as wide as its heading, and the last one ends where every
+		# switch in the settings ends, so the headings line up with the controls
+		# above them. The checkboxes sit centered under their heading.
+		widths = [max(float(size), float(self._font("caption_strong").measure(title))) for title in SHOW_COLUMNS]
+		spans = []
+		edge = right
+		for width in reversed(widths):
+			spans.insert(0, (edge - width, edge))
+			edge -= width + gap
+		for title, (_left, column_right) in zip(SHOW_COLUMNS, spans):
+			self._text((column_right, y), title, "caption_strong", self._palette.label_secondary, anchor="ne")
+		y = self._draw_section_label(SHOW_TITLE, y, SHOW_LABEL_GAP)
+
 		height = self._unit(SHOW_ROW_HEIGHT)
+		label_width = spans[0][0] - gap - pad
+		columns = (
+			(spans[0], self._current.in_panel, PANEL_KEY_PREFIX),
+			(spans[1], self._current.displayed, SHOW_KEY_PREFIX),
+		)
 		for group in self._current.groups:
 			for metric in group:
-				checked = metric.key in checked_keys
-				box = ImageTk.PhotoImage(
-					render_checkbox(
-						size,
-						checked,
-						self._accent,
-						on_accent(self._accent),
-						self._palette.surface,
-						self._palette.label_tertiary,
-					)
-				)
-				self._control_photos.append(box)
 				middle = y + height / 2.0
-				self._canvas.create_image(pad, middle - size / 2.0, image=box, anchor="nw", tags="content")
 				self._text(
-					(pad + size + self._unit(CHECKBOX_GAP), middle),
-					self._fit(metric.label, "row", right - pad - size - self._unit(CHECKBOX_GAP)),
+					(pad, middle),
+					self._fit(metric.label, "row", label_width),
 					"row",
 					self._palette.label_primary,
 					anchor="w",
 				)
-				self._add_hit((pad, y, right, y + height), f"{prefix}{metric.key}")
+				for (left, column_right), checked_keys, prefix in columns:
+					center = (left + column_right) / 2.0
+					self._draw_checkbox(center - size / 2.0, middle - size / 2.0, size, metric.key in checked_keys)
+					reach = gap / 2.0
+					self._add_hit((left - reach, y, column_right + reach, y + height), f"{prefix}{metric.key}")
 				y += height
 		return y
+
+	def _draw_checkbox(self, left: float, top: float, size: int, checked: bool) -> None:
+		"""Place one checkbox in the colors of the service of the tab.
+
+		Args:
+			left: Position of its left edge in device pixels. float.
+			top: Position of its top edge in device pixels. float.
+			size: Edge length in device pixels. int, greater than 0.
+			checked: Whether it is drawn checked. bool.
+
+		Returns:
+			None.
+		"""
+		require_type(checked, bool, "checked")
+		box = ImageTk.PhotoImage(
+			render_checkbox(
+				size,
+				checked,
+				self._accent,
+				on_accent(self._accent),
+				self._palette.surface,
+				self._palette.label_tertiary,
+			)
+		)
+		# Kept on the panel because Tk holds only a weak reference to the image
+		# behind a canvas item, and a collected photo leaves a blank space.
+		self._control_photos.append(box)
+		self._canvas.create_image(left, top, image=box, anchor="nw", tags="content")
 
 	def _draw_settings_label(self, label: str, y: float, control_height: float) -> tuple[float, float]:
 		"""Draw the name of one setting and return the line its control sits on.
@@ -1265,16 +1312,17 @@ class Panel:
 		self._add_hit(switch.box, key)
 		return (switch, y + height)
 
-	def _draw_startup_row(self, y: float) -> float:
-		"""Draw the name of the startup setting and the switch that sets it.
+	def _draw_general_rows(self, y: float) -> float:
+		"""Draw the switches of the General section, start at login and show plan.
 
 		Args:
 			y: Vertical cursor in device pixels. float.
 
 		Returns:
-			float: The vertical cursor at the bottom of the row.
+			float: The vertical cursor at the bottom of the last row.
 		"""
-		self._switch, y = self._draw_switch_row(STARTUP_LABEL, y, self._start_on_startup, STARTUP_KEY)
+		for key, label in ((STARTUP_KEY, STARTUP_LABEL), (SHOW_PLAN_KEY, SHOW_PLAN_LABEL)):
+			self._switches[key], y = self._draw_switch_row(label, y, self._flags[key], key)
 		return y
 
 	def _draw_account_row(self, y: float) -> float:
@@ -1579,7 +1627,7 @@ class Panel:
 		self._lit.clear()
 		self._control_photos.clear()
 		self._hovered = ""
-		self._switch = None
+		self._switches.clear()
 		# A redraw may follow a change of palette or of scale, which every shade
 		# already rendered would be wrong for.
 		self._skeleton.clear()
@@ -1644,8 +1692,8 @@ class Panel:
 			self._set_view(SETTINGS_VIEW)
 		elif key == BACK_KEY:
 			self._set_view(USAGE_VIEW)
-		elif key == STARTUP_KEY:
-			self._toggle_startup()
+		elif key in self._flags:
+			self._toggle_flag(key)
 		elif key in (SIGN_IN_KEY, ACCOUNT_KEY):
 			# The panel is left open. A browser that opens takes the focus and
 			# dismisses it anyway, and one that does not leaves the panel in
@@ -1701,19 +1749,24 @@ class Panel:
 		self._layout()
 		self._start_animating()
 
-	def _toggle_startup(self) -> None:
-		"""Turn the start on startup switch over and report the new value.
+	def _toggle_flag(self, key: str) -> None:
+		"""Turn one switch of the General section over and report the new value.
 
 		The switch is redrawn before the value is reported, so it answers the
 		click at once rather than after whatever the owner does with it.
 
+		Args:
+			key: Which switch, STARTUP_KEY or SHOW_PLAN_KEY. str.
+
 		Returns:
 			None.
 		"""
-		self._start_on_startup = not self._start_on_startup
-		if self._switch is not None:
-			self._switch.set_fraction(1.0 if self._start_on_startup else 0.0)
-		self._on_startup_change(self._start_on_startup)
+		require_member(key, frozenset(self._flags), "key")
+		self._flags[key] = not self._flags[key]
+		switch = self._switches.get(key)
+		if switch is not None:
+			switch.set_fraction(1.0 if self._flags[key] else 0.0)
+		self._flag_callbacks[key](self._flags[key])
 
 	def _scroll_to(self, offset: float, viewport_height: float) -> None:
 		"""Move the drawn content to a scroll offset, clamped to what is scrollable.
@@ -1867,8 +1920,32 @@ class Panel:
 		Returns:
 			None.
 		"""
+		self._set_flag(STARTUP_KEY, enabled)
+
+	def set_show_plan(self, enabled: bool) -> None:
+		"""Set whether the plan is named beside the service, and its switch with it.
+
+		Args:
+			enabled: Whether the plan is shown. bool.
+
+		Returns:
+			None.
+		"""
+		self._set_flag(SHOW_PLAN_KEY, enabled)
+
+	def _set_flag(self, key: str, enabled: bool) -> None:
+		"""Set one switch of the General section to a stored value.
+
+		Args:
+			key: Which switch, STARTUP_KEY or SHOW_PLAN_KEY. str.
+			enabled: The value it shows. bool.
+
+		Returns:
+			None.
+		"""
+		require_member(key, frozenset(self._flags), "key")
 		require_type(enabled, bool, "enabled")
-		self._start_on_startup = enabled
+		self._flags[key] = enabled
 		if self._visible:
 			self._layout()
 

@@ -83,6 +83,30 @@ AUTH_RETRY_DELAY_SECONDS = 1.0
 
 REFUSED_MESSAGE = "The usage endpoint refused the request."
 
+# The plans as the Codex client names them to its own users, keyed by the
+# plan_type the usage endpoint reports. A value not listed here, which a new
+# plan would be, is shown as its words with capitals.
+PLAN_NAMES = {
+	"free": "Free",
+	"go": "Go",
+	"plus": "Plus",
+	"prolite": "Pro 100",
+	"pro": "Pro 200",
+	"promax": "Pro 500",
+	"team": "Business",
+	"self_serve_business_usage_based": "Business",
+	"self_serve_business_prolite": "Business Premium",
+	"business": "Enterprise",
+	"enterprise": "Enterprise",
+	"ent26": "Enterprise",
+	"enterprise_cbp_usage_based": "Enterprise",
+	"enterprise_cbp_automation": "Enterprise (Automation)",
+	"edu": "Edu",
+	"edu_plus": "Edu Plus",
+	"edu_pro": "Edu Pro",
+}
+UNKNOWN_PLAN = "Unknown"
+
 
 def _identity(answer: dict[str, Any]) -> dict[str, Any]:
 	"""Return the claims of the identity token in a token endpoint answer.
@@ -201,6 +225,23 @@ def _window(section: Any, key: str, label: str) -> UsageWindow | None:
 	)
 
 
+def _plan_label(plan_type: Any) -> str:
+	"""Return a plan as the Codex client names it.
+
+	Args:
+		plan_type: The plan_type field of the usage response. Expected str or
+			None.
+
+	Returns:
+		str: Text such as "Plus" or "Pro 100", the value's words with capitals
+		for a plan not in PLAN_NAMES, or "Unknown" when the field is missing.
+	"""
+	if not isinstance(plan_type, str) or not plan_type.strip():
+		return UNKNOWN_PLAN
+	key = plan_type.strip().lower()
+	return PLAN_NAMES.get(key, key.replace("_", " ").title())
+
+
 def parse(document: dict[str, Any]) -> UsageSnapshot:
 	"""Build a usage snapshot from a decoded ChatGPT usage response.
 
@@ -211,7 +252,7 @@ def parse(document: dict[str, Any]) -> UsageSnapshot:
 		UsageSnapshot: The parsed reading. It always carries a session window,
 		reading 0 percent when the response reports none.
 	"""
-	plan = str(document.get("plan_type") or "unknown").replace("_", " ").title()
+	plan = _plan_label(document.get("plan_type"))
 	rate_limit = document.get("rate_limit")
 	rate_limit = rate_limit if isinstance(rate_limit, dict) else {}
 

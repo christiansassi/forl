@@ -117,7 +117,7 @@ struct PanelView: View {
 				Text(provider.label)
 					.font(.system(size: 13, weight: .semibold))
 			}
-			if let plan = store.state(for: providerKey)?.snapshot?.plan, !plan.isEmpty {
+			if store.preferences.showPlan, let plan = store.state(for: providerKey)?.snapshot?.plan, !plan.isEmpty {
 				Text(plan)
 					.font(.system(size: 11))
 					.foregroundStyle(.secondary)

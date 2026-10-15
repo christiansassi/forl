@@ -31,6 +31,17 @@ struct ClaudeProvider: Provider {
 	private static let weeklyAllKind = "weekly_all"
 	private static let weeklyScopedKind = "weekly_scoped"
 	private static let unknownPlan = "Unknown"
+	/// The plan each organization type stands for. The rate limit tier is no
+	/// help there: Free and Pro share "default_claude_ai", and a Team Premium
+	/// seat reports "default_claude_max_5x".
+	private static let organizationPlans = [
+		"claude_pro": "Pro",
+		"claude_max": "Max",
+		"claude_team": "Team",
+		"claude_enterprise": "Enterprise",
+	]
+	private static let tierPrefix = "default_claude_"
+	private static let maxTierPrefix = "default_claude_max_"
 
 	/// What the browser is sent to, and where a code or a refresh token is
 	/// exchanged. The exchange is on the API host, which answers a plain client;
@@ -146,55 +157,54 @@ struct ClaudeProvider: Provider {
 
 	/// Return the plan as it is named to the user, including the multiplier.
 	///
-	/// A Max subscription comes in more than one size, and which one is in force
-	/// decides what every percentage on screen is a percentage of, so the
-	/// multiplier belongs next to the plan name. The rate limit tier names both;
-	/// the flags on the account are read only when it names neither.
+	/// The organization's type names the plan. An account whose type is missing
+	/// or new is named by its flags instead, and one with neither flag but with a
+	/// rate limit tier is on the free plan. A Max plan comes in more than one
+	/// size, and which one is in force decides what every percentage on screen
+	/// is a percentage of, so the multiplier the tier carries goes next to it.
 	///
 	/// - Parameter profile: The decoded account endpoint response.
-	/// - Returns: Text such as "Max 5x", or "Pro", or "Unknown".
+	/// - Returns: Text such as "Max 5x", "Pro", "Team" or "Free", or "Unknown".
 	static func planLabel(_ profile: [String: Any]) -> String {
-		let tier = section(profile, "organization")["rate_limit_tier"] as? String ?? ""
-		if let parsed = parseTier(tier) {
-			return parsed
-		}
+		let organization = section(profile, "organization")
 		let account = section(profile, "account")
-		if account["has_claude_max"] as? Bool == true {
-			return "Max"
+		let tier = organization["rate_limit_tier"] as? String ?? ""
+		let multiplier = maxMultiplier(tier)
+
+		var name = organizationPlans[organization["organization_type"] as? String ?? ""]
+		if name == nil {
+			if account["has_claude_max"] as? Bool == true || multiplier != nil {
+				name = "Max"
+			} else if account["has_claude_pro"] as? Bool == true {
+				name = "Pro"
+			} else if tier.hasPrefix(tierPrefix) {
+				name = "Free"
+			}
 		}
-		if account["has_claude_pro"] as? Bool == true {
-			return "Pro"
+		guard let name else {
+			return unknownPlan
 		}
-		return unknownPlan
+		if name == "Max", let multiplier {
+			return "\(name) \(multiplier)"
+		}
+		return name
 	}
 
-	/// Return a rate limit tier name as the plan it stands for.
+	/// Return the size of a Max plan from its rate limit tier.
 	///
-	/// Tiers are named like "default_claude_max_5x": the plan, and for Max the
-	/// multiplier.
-	///
-	/// - Parameter tier: The tier name the account endpoint reported.
-	/// - Returns: The plan as the user reads it, or nil when the name does not
-	///   have that shape.
-	private static func parseTier(_ tier: String) -> String? {
-		let prefix = "default_claude_"
-		guard tier.hasPrefix(prefix) else {
+	/// - Parameter tier: The tier name the account endpoint reported, such as
+	///   "default_claude_max_5x".
+	/// - Returns: The multiplier, such as "5x", or nil for a tier that is not a
+	///   Max one.
+	private static func maxMultiplier(_ tier: String) -> String? {
+		guard tier.hasPrefix(maxTierPrefix) else {
 			return nil
 		}
-		var parts = tier.dropFirst(prefix.count).split(separator: "_").map(String.init)
-		guard !parts.isEmpty else {
+		let multiplier = String(tier.dropFirst(maxTierPrefix.count))
+		guard multiplier.hasSuffix("x"), Int(multiplier.dropLast()) != nil else {
 			return nil
 		}
-		var multiplier = ""
-		if let last = parts.last, last.hasSuffix("x"), Int(last.dropLast()) != nil {
-			multiplier = last
-			parts.removeLast()
-		}
-		guard !parts.isEmpty else {
-			return nil
-		}
-		let name = parts.map(\.capitalized).joined(separator: " ")
-		return multiplier.isEmpty ? name : "\(name) \(multiplier)"
+		return multiplier
 	}
 
 	/// Return who is signed in, as the settings should name them.

@@ -37,6 +37,7 @@ SETTINGS_FILE = "settings.json"
 GENERAL_SECTION = "general"
 
 STARTUP_FIELD = "start_on_startup"
+SHOW_PLAN_FIELD = "show_plan"
 VIEWS_FIELD = "views"
 PANEL_FIELD = "panel"
 MENU_BAR_FIELD = "menu_bar"
@@ -45,6 +46,9 @@ DOCK_FIELD = "dock"
 # On by default, so a widget that has never been configured is there after a
 # restart rather than having to be started by hand.
 DEFAULT_START_ON_STARTUP = True
+# On by default, because which plan a reading belongs to is what its percentages
+# are percentages of.
+DEFAULT_SHOW_PLAN = True
 
 # Both fields are only kept so an older preferences file survives a round trip.
 DEFAULT_MENU_BAR = True
@@ -245,6 +249,43 @@ def save_start_on_startup(enabled: bool) -> bool:
 		bool: True when the file was written, False when it could not be.
 	"""
 	require_type(enabled, bool, "enabled")
+	return _save_general_flag(STARTUP_FIELD, enabled)
+
+
+def load_show_plan() -> bool:
+	"""Return whether the panel names the plan beside the service.
+
+	Returns:
+		bool: The stored choice, or DEFAULT_SHOW_PLAN when none is stored.
+	"""
+	return _flag(_section(GENERAL_SECTION), SHOW_PLAN_FIELD, DEFAULT_SHOW_PLAN)
+
+
+def save_show_plan(enabled: bool) -> bool:
+	"""Store whether the panel names the plan beside the service.
+
+	Args:
+		enabled: The choice to store. bool.
+
+	Returns:
+		bool: True when the file was written, False when it could not be.
+	"""
+	require_type(enabled, bool, "enabled")
+	return _save_general_flag(SHOW_PLAN_FIELD, enabled)
+
+
+def _save_general_flag(field: str, value: bool) -> bool:
+	"""Store one switch of the general section, leaving its other values alone.
+
+	Args:
+		field: Name of the field to write. str, non-empty.
+		value: The value to store. bool.
+
+	Returns:
+		bool: True when the file was written, False when it could not be.
+	"""
+	require_non_empty_str(field, "field")
+	require_type(value, bool, "value")
 	section = _section(GENERAL_SECTION)
-	section[STARTUP_FIELD] = enabled
+	section[field] = value
 	return _write_section(GENERAL_SECTION, section)
