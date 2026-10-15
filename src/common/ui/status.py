@@ -1,7 +1,8 @@
 """The readings, written to files other programs can show.
 
 A status bar such as Waybar, Polybar or i3blocks, and a desktop widget such as
-the KDE Plasma one under src/linux/plasma, cannot ask the widget for its
+the KDE Plasma one under src/linux/plasma or the GNOME Shell extension under
+src/linux/gnome, cannot ask the widget for its
 readings, so the widget writes them where those programs look, every time they
 change. Nothing is written on a platform whose backend names no directory for
 them.
@@ -131,12 +132,14 @@ def _write_text(path: Path, text: str) -> None:
 	os.replace(temporary, path)
 
 
-def write_status(directory: Path, views: tuple[ProviderView, ...]) -> bool:
+def write_status(directory: Path, views: tuple[ProviderView, ...], tray: bool) -> bool:
 	"""Write every service's readings where status bars and widgets read them.
 
 	Args:
 		directory: Where to write, created when missing. Path.
 		views: The state of every service, in tab order. tuple of ProviderView.
+		tray: Whether the widget has icons in a tray, so a widget that would
+			show the same readings in the same bar can step aside. bool.
 
 	Returns:
 		bool: True when every file was written. False when the directory could
@@ -144,6 +147,7 @@ def write_status(directory: Path, views: tuple[ProviderView, ...]) -> bool:
 	"""
 	require_type(directory, Path, "directory")
 	require_type(views, tuple, "views")
+	require_type(tray, bool, "tray")
 	for view in views:
 		require_type(view, ProviderView, "views")
 	try:
@@ -152,6 +156,7 @@ def write_status(directory: Path, views: tuple[ProviderView, ...]) -> bool:
 			directory / STATUS_FILE,
 			{
 				"updated": datetime.now(timezone.utc).isoformat(),
+				"tray": tray,
 				"services": [_service_document(view) for view in views],
 			},
 		)

@@ -305,7 +305,11 @@ class WidgetApp:
 		"""
 		self._panel.refresh()
 		if self._status_dir is not None:
-			write_status(self._status_dir, tuple(self._describe(provider.key) for provider in self._providers))
+			write_status(
+				self._status_dir,
+				tuple(self._describe(provider.key) for provider in self._providers),
+				self._has_tray,
+			)
 		if not self._has_tray:
 			return
 		showing = False
