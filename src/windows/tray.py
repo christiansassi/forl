@@ -38,9 +38,10 @@ import pystray
 from PIL import Image
 from pystray._util import win32
 
-from ..validation import require_non_empty_str, require_number_in_range, require_positive_int, require_type
-from ..system import small_icon_size
-from .core import MetricReading
+from src.common.ui.core import MetricReading
+from src.common.validation import require_non_empty_str, require_number_in_range, require_positive_int, require_type
+
+from .backend import small_icon_size
 
 ICON_SIZE = 0
 TOOLTIP_LIMIT = 127

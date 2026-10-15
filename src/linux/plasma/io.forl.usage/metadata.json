@@ -1,0 +1,12 @@
+{
+	"KPackageStructure": "Plasma/Applet",
+	"KPlugin": {
+		"Category": "System Information",
+		"Description": "Claude and ChatGPT usage limits, as FORL last read them",
+		"Icon": "utilities-system-monitor",
+		"Id": "io.forl.usage",
+		"Name": "FORL",
+		"Version": "1.0"
+	},
+	"X-Plasma-API-Minimum-Version": "6.0"
+}

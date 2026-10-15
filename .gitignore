@@ -50,6 +50,7 @@ DerivedData/
 *.mp4
 
 src/windows/tests/
+src/linux/tests/
 src/mac/tests/
 src/mac/*Tests/
 

@@ -1,4 +1,4 @@
-"""Reading marks, and drawing for Windows.
+"""Reading marks, and drawing for the Windows and Linux widgets.
 
 Two different things live here. svg.py reads a provider mark out of its SVG as
 plain polygons and imports no drawing library at all, so the outline can be

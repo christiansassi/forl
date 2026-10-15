@@ -3,7 +3,7 @@
 Both marks ship as a single path element, so it is cheaper to read that path
 directly than to carry an SVG rendering library. The path is split into its
 subpaths and each one is flattened to a polygon, which is a shape any toolkit
-can fill: the Windows panel fills them with Pillow, the macOS surfaces with a
+can fill: the Windows and Linux panel fills them with Pillow, the macOS surfaces with a
 Cocoa path.
 
 Nothing here draws, and nothing here imports a drawing library, which is what

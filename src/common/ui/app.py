@@ -1,9 +1,14 @@
-"""Wire the Windows surfaces to the shared widget state.
+"""Wire the desktop surfaces to the shared widget state, on Windows and Linux.
 
 Everything that is not drawing, the poller, the sign-in, the selection and the
-preferences, lives in core.py and serves both platforms. What is here is the
-Windows half: a Tk root, the notification area icons, the menu drawn in place of
-the shell's own, and the panel.
+preferences, lives in core.py. What is here is the rest: a Tk root, the tray
+icons the platform backend provides, the menu drawn in place of the shell's own
+where the platform leaves it to the widget, the panel, and the files status bars
+and desktop widgets read.
+
+A session with no tray to put icons in, as on a GNOME desktop without the
+AppIndicator extension, still gets the whole widget: the panel opens as an
+ordinary window, and closing it quits.
 
 One process watches every service, the way the Mac app does. Each service has a
 core of its own and a set of tray icons of its own, drawn in its color; the panel
@@ -28,21 +33,21 @@ import queue
 import tkinter as tk
 import traceback
 from functools import lru_cache
-from typing import Callable
+from typing import Any, Callable
 
-from PIL import Image
+from PIL import Image, ImageTk
 
 from ..providers import Provider
 from ..render.icon import render_icon
 from ..render.svg import ASSETS_DIR
 from ..render.theme import LABEL_PRIMARY
 from ..settings.store import load_show_plan, load_start_on_startup, save_show_plan, save_start_on_startup
-from ..system import enable_dpi_awareness, set_startup_entry
+from ..system import create_tray, enable_dpi_awareness, set_startup_entry, status_dir, tray_available
 from ..validation import require_member, require_non_empty_str, require_positive_int, require_type
 from .core import DEFAULT_POLL_SECONDS, QUIT_KEY, MetricReading, ProviderView, WidgetCore, quit_rows
 from .menu import TrayMenu
 from .panel import USAGE_VIEW, Panel
-from .tray import TrayIcons
+from .status import write_status
 
 DRAIN_INTERVAL_MS = 120
 
@@ -52,6 +57,9 @@ APP_ICON_KEY = "app"
 APP_ICON_TOOLTIP = "FORL"
 APP_ICON_SIGNED_OUT_TOOLTIP = "FORL: not signed in"
 APP_ICON_FILE = "icon.png"
+# The size of the app's artwork given to the window manager for a standalone
+# panel's title bar and task list entry.
+WINDOW_ICON_SIZE = 64
 
 
 @lru_cache(maxsize=4)
@@ -132,15 +140,36 @@ class WidgetApp:
 		self._panel.set_startup(self._start_on_startup)
 		self._panel.set_show_plan(load_show_plan())
 		self._menu = TrayMenu(self._root, on_choose=self._choose)
-		self._trays = {provider.key: self._tray_for(provider) for provider in providers}
-		self._app_icon = TrayIcons(
-			APP_ICON_NAME,
-			lambda _percent, size: _app_artwork(size),
-			on_activate=lambda: self._post(lambda: self._toggle_panel("")),
-			on_menu=lambda x, y: self._post(lambda: self._open_menu(x, y)),
-		)
+		self._status_dir = status_dir()
+		self._has_tray = tray_available()
+		self._trays: dict[str, Any] = {}
+		self._app_icon: Any = None
+		if self._has_tray:
+			self._trays = {provider.key: self._tray_for(provider) for provider in providers}
+			self._app_icon = create_tray(
+				APP_ICON_NAME,
+				lambda _percent, size: _app_artwork(size),
+				lambda: self._post(lambda: self._toggle_panel("")),
+				lambda x, y: self._post(lambda: self._open_menu(x, y)),
+				lambda: self._post(self.shutdown),
+			)
+		else:
+			self._panel.make_standalone(self.shutdown)
+			# Kept on the app, because Tk keeps only a weak reference to it.
+			self._window_icon = ImageTk.PhotoImage(_app_artwork(WINDOW_ICON_SIZE), master=self._root)
+			self._root.iconphoto(True, self._window_icon)
 
-	def _tray_for(self, provider: Provider) -> TrayIcons:
+	def _tray_icons(self) -> tuple[Any, ...]:
+		"""Return every set of tray icons, the app's own first.
+
+		Returns:
+			tuple: The tray managers, empty in a session with no tray.
+		"""
+		if self._app_icon is None:
+			return ()
+		return (self._app_icon, *self._trays.values())
+
+	def _tray_for(self, provider: Provider) -> Any:
 		"""Return the set of icons one service's readings are shown in.
 
 		The icons are named by the service's key, which is what they were named
@@ -151,14 +180,15 @@ class WidgetApp:
 			provider: The service. Provider.
 
 		Returns:
-			TrayIcons: The icons, none of them showing yet.
+			The platform's tray manager, none of its icons showing yet.
 		"""
 		key = provider.key
-		return TrayIcons(
+		return create_tray(
 			key,
 			lambda percent, size: render_icon(percent, size, provider.accent),
-			on_activate=lambda: self._post(lambda: self._toggle_panel(key)),
-			on_menu=lambda x, y: self._post(lambda: self._open_menu(x, y)),
+			lambda: self._post(lambda: self._toggle_panel(key)),
+			lambda x, y: self._post(lambda: self._open_menu(x, y)),
+			lambda: self._post(self.shutdown),
 		)
 
 	def _core(self, provider_key: str) -> WidgetCore:
@@ -221,7 +251,7 @@ class WidgetApp:
 				self._drain_job = self._root.after(DRAIN_INTERVAL_MS, self._drain_events)
 
 	def _set_startup(self, enabled: bool) -> None:
-		"""Store whether the widget starts with Windows, and make it so.
+		"""Store whether the widget starts when the user signs in, and make it so.
 
 		Args:
 			enabled: What the user set the switch to. bool.
@@ -268,12 +298,16 @@ class WidgetApp:
 			self.shutdown()
 
 	def _refresh_surfaces(self) -> None:
-		"""Redraw every tray icon and, when it is open, the panel.
+		"""Redraw every tray icon, the panel when it is open, and the status files.
 
 		Returns:
 			None.
 		"""
 		self._panel.refresh()
+		if self._status_dir is not None:
+			write_status(self._status_dir, tuple(self._describe(provider.key) for provider in self._providers))
+		if not self._has_tray:
+			return
 		showing = False
 		for key, tray in self._trays.items():
 			readings = self._cores[key].readings()
@@ -325,7 +359,7 @@ class WidgetApp:
 		self._panel.hide()
 		for core in self._cores.values():
 			core.stop()
-		for tray in (self._app_icon, *self._trays.values()):
+		for tray in self._tray_icons():
 			tray.stop()
 		self._root.quit()
 
@@ -336,12 +370,15 @@ class WidgetApp:
 			None. Returns once the user quits the widget.
 		"""
 		self._refresh_surfaces()
-		for tray in (self._app_icon, *self._trays.values()):
+		for tray in self._tray_icons():
 			tray.start()
 		self._drain_job = self._root.after(DRAIN_INTERVAL_MS, self._drain_events)
 		for core in self._cores.values():
 			core.start()
-		if not any(core.signed_in for core in self._cores.values()):
+		if not self._has_tray:
+			# The window is the only way into the widget, so it is always shown.
+			self._root.after(DRAIN_INTERVAL_MS, lambda: self._panel.show(USAGE_VIEW))
+		elif not any(core.signed_in for core in self._cores.values()):
 			# Nobody is signed in, so there is nothing in the notification area
 			# worth finding; the panel is put in front of the user instead, on
 			# the page that starts a sign-in, as the Mac app does.

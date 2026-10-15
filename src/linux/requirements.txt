@@ -1,0 +1,4 @@
+# Python dependencies for running and building the Linux widget.
+pillow>=11.0.0
+jeepney>=0.8.0
+pyinstaller>=6.16.0

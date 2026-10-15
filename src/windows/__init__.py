@@ -1,6 +1,7 @@
-"""Claude usage taskbar widget.
+"""The Windows widget: its entry point, its backend, its tray, and its build.
 
-Root package for the widget: reads the local Claude Code OAuth credentials,
-polls the Anthropic usage endpoint, and renders the result as a Windows
-notification-area ring icon backed by a detailed metrics window.
+Everything the Windows and Linux widgets share lives in src/common. What is
+here is what only Windows does: the notification area icons, the registry
+entry that starts the widget at sign-in, the desktop window manager calls that
+round the panel, and the build of the executable.
 """

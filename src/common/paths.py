@@ -22,6 +22,10 @@ APP_DIR_NAME = "forl"
 # macOS has none for it.
 MACOS_DATA_DIR = ("Library", "Application Support")
 
+# Where Linux keeps it when XDG_DATA_HOME is not set, as the XDG base directory
+# specification says.
+LINUX_DATA_DIR = (".local", "share")
+
 
 def data_dir() -> Path:
 	"""Return the directory this widget's own files belong in.
@@ -32,12 +36,15 @@ def data_dir() -> Path:
 	Returns:
 		Path: The per user application data directory of this widget, which is
 		%APPDATA%\\forl on Windows, ~/Library/Application Support/forl on macOS,
-		and ~/forl on a platform that reports neither.
+		and $XDG_DATA_HOME/forl, by default ~/.local/share/forl, on Linux.
 	"""
 	if sys.platform == "darwin":
 		return Path.home().joinpath(*MACOS_DATA_DIR) / APP_DIR_NAME
-	base = os.environ.get("APPDATA")
-	root = Path(base) if base else Path.home()
+	if sys.platform == "win32":
+		base = os.environ.get("APPDATA")
+		return (Path(base) if base else Path.home()) / APP_DIR_NAME
+	base = os.environ.get("XDG_DATA_HOME")
+	root = Path(base) if base else Path.home().joinpath(*LINUX_DATA_DIR)
 	return root / APP_DIR_NAME
 
 

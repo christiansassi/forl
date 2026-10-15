@@ -1,4 +1,4 @@
-"""Rasterize a provider mark for the Windows panel.
+"""Rasterize a provider mark for the panel of the Windows and Linux widgets.
 
 The polygons come from svg.py, which reads them out of the SVG without needing a
 drawing library. They are combined here under the even odd rule, which is what

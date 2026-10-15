@@ -7,9 +7,9 @@ All the calls that fill those gaps live here, and every one of them degrades to
 a sensible answer when the system call is unavailable, so an unusual build
 costs a feature rather than the launch.
 
-This is one of two backends behind the same set of names. Nothing above it
-imports this module directly: they import the package, which picks the backend
-that matches the machine.
+This is the Windows backend behind the names of src/common/system, which the
+Windows entry point installs before anything else runs. The shared code never
+imports it directly.
 """
 
 from __future__ import annotations
@@ -19,8 +19,10 @@ import subprocess
 import sys
 from ctypes import wintypes
 from pathlib import Path
+from typing import Any, Callable
 
-from ..validation import require_non_empty_str, require_positive_int, require_type
+from src.common.system import EDGE_BOTTOM
+from src.common.validation import require_member, require_non_empty_str, require_positive_int, require_type
 
 ERROR_ALREADY_EXISTS = 183
 # Per session rather than machine wide, so two signed-in users each get one.
@@ -47,6 +49,25 @@ PROCESS_SYSTEM_DPI_AWARE = 1
 PERSONALIZE_KEY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
 APPS_LIGHT_VALUE = "AppsUseLightTheme"
 
+UI_FONT_FAMILY = "Segoe UI"
+
+# The faces type is drawn into images with, best first. Segoe UI is the family
+# the panel is set in; the others are what a machine without it is likely to
+# have.
+FONT_FILES = {
+	"bold": (
+		"C:/Windows/Fonts/segoeuib.ttf",
+		"C:/Windows/Fonts/seguisb.ttf",
+		"C:/Windows/Fonts/arialbd.ttf",
+		"C:/Windows/Fonts/DejaVuSans-Bold.ttf",
+	),
+	"normal": (
+		"C:/Windows/Fonts/segoeui.ttf",
+		"C:/Windows/Fonts/arial.ttf",
+		"C:/Windows/Fonts/DejaVuSans.ttf",
+	),
+}
+
 
 def detach(name: str) -> None:
 	"""Put this process into the background and give the terminal back.
@@ -60,6 +81,89 @@ def detach(name: str) -> None:
 		interpreter, which is given no console to hold in the first place.
 	"""
 	require_non_empty_str(name, "name")
+
+
+def ui_font_family() -> str:
+	"""Return the family the interface text is set in.
+
+	Returns:
+		str: "Segoe UI", the face of Windows itself.
+	"""
+	return UI_FONT_FAMILY
+
+
+def font_files(weight: str) -> tuple[str, ...]:
+	"""Return the font files to try, in order, for type drawn into images.
+
+	Args:
+		weight: Either "normal" or "bold". str.
+
+	Returns:
+		tuple of str: Paths in the Windows font folder, best first.
+	"""
+	require_member(weight, frozenset(FONT_FILES), "weight")
+	return FONT_FILES[weight]
+
+
+def panel_edge() -> str:
+	"""Return the edge of the screen the panel opens from.
+
+	Returns:
+		str: EDGE_BOTTOM, beside the taskbar, which is where the notification
+		area is on Windows.
+	"""
+	return EDGE_BOTTOM
+
+
+def tray_available() -> bool:
+	"""Return whether this session has a notification area.
+
+	Returns:
+		bool: True; every Windows desktop has one.
+	"""
+	return True
+
+
+def status_dir() -> Path | None:
+	"""Return where the readings are written for other programs.
+
+	Returns:
+		None: nothing on Windows reads them.
+	"""
+	return None
+
+
+def create_tray(
+	name: str,
+	draw: Callable[[float | None, int], Any],
+	on_activate: Callable[[], None],
+	on_menu: Callable[[int, int], None],
+	on_quit: Callable[[], None],
+) -> Any:
+	"""Return a set of notification area icons, none showing yet.
+
+	Args:
+		name: Prefix of every icon's name, such as a provider key. str,
+			non-empty.
+		draw: Returns the image of one icon, given its reading and its edge
+			length. Callable taking a float or None and an int and returning a
+			PIL.Image.Image.
+		on_activate: Called on a left click. Callable taking no arguments and
+			returning None.
+		on_menu: Called with the pointer position on a right click, where the
+			widget draws its own menu, which is how Quit is reached on Windows.
+			Callable taking two ints and returning None.
+		on_quit: Not called on Windows, whose shell draws no menu for the widget.
+			Callable taking no arguments and returning None.
+
+	Returns:
+		TrayIcons: The icons of src/windows/tray.py.
+	"""
+	if not callable(on_quit):
+		raise TypeError("on_quit must be callable")
+	from .tray import TrayIcons
+
+	return TrayIcons(name, draw, on_activate, on_menu)
 
 
 def enable_dpi_awareness() -> None:
@@ -249,7 +353,7 @@ ENTRY_NAME = "FORL"
 # or a sign-in would start the same widget twice.
 LEGACY_ENTRY_NAMES = ("FORL-claude", "FORL-chatgpt")
 
-ENTRY_SCRIPT = Path(__file__).resolve().parents[1] / "main.py"
+ENTRY_SCRIPT = Path(__file__).resolve().parent / "main.py"
 
 # The interpreter that runs a script without opening a console window. Starting
 # the widget with the plain interpreter would flash, or leave, a console at

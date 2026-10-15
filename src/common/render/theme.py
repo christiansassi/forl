@@ -18,6 +18,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import NamedTuple
 
+from ..system import font_files, ui_font_family
 from ..validation import require_member, require_non_empty_str, require_number_in_range, require_positive_int, require_type
 
 # Stops of the usage ramp as (percentage, (red, green, blue)). A value between
@@ -97,8 +98,6 @@ LIGHT_PALETTE = Palette(
 	label_tertiary="#8a8a8a",
 )
 
-UI_FONT_FAMILY = "Segoe UI"
-
 # Size and weight together, in the order of Apple's text styles. Sizes are in
 # points, so Windows scales them with the display and the user text size.
 TEXT_STYLES = {
@@ -110,19 +109,7 @@ TEXT_STYLES = {
 	"caption_strong": (8, "bold"),
 }
 
-FONT_CANDIDATES = {
-	"bold": (
-		"C:/Windows/Fonts/segoeuib.ttf",
-		"C:/Windows/Fonts/seguisb.ttf",
-		"C:/Windows/Fonts/arialbd.ttf",
-		"C:/Windows/Fonts/DejaVuSans-Bold.ttf",
-	),
-	"normal": (
-		"C:/Windows/Fonts/segoeui.ttf",
-		"C:/Windows/Fonts/arial.ttf",
-		"C:/Windows/Fonts/DejaVuSans.ttf",
-	),
-}
+FONT_WEIGHTS = frozenset(("normal", "bold"))
 
 
 def usage_rgb(percent: float) -> tuple[int, int, int]:
@@ -184,7 +171,7 @@ def text_style(name: str) -> tuple[str, int, str]:
 	"""
 	require_member(name, frozenset(TEXT_STYLES), "name")
 	size, weight = TEXT_STYLES[name]
-	return (UI_FONT_FAMILY, size, weight)
+	return (ui_font_family(), size, weight)
 
 
 def hex_to_rgb(color: str) -> tuple[int, int, int]:
@@ -335,10 +322,10 @@ def load_font(size: int, weight: str = "bold"):
 		PIL.ImageFont.ImageFont: A font object usable with ImageDraw.text.
 	"""
 	require_positive_int(size, "size")
-	require_member(weight, frozenset(FONT_CANDIDATES), "weight")
+	require_member(weight, FONT_WEIGHTS, "weight")
 	from PIL import ImageFont
 
-	for candidate in FONT_CANDIDATES[weight]:
+	for candidate in font_files(weight):
 		if Path(candidate).exists():
 			try:
 				return ImageFont.truetype(candidate, size)

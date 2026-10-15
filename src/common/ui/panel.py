@@ -9,7 +9,7 @@ bars animate: their fill is driven by springs, so a refresh moves each bar from
 where it is rather than snapping it to the new value.
 
 The panel itself appears and disappears at once, with no transition. The bars
-animate, and only when the Windows animation preference allows it, and a line in
+animate, and only when the system's animation preference allows it, and a line in
 the footer counts down the seconds to the next reading.
 
 One panel serves every service, the way the Mac app's does: a row of tabs at the
@@ -25,8 +25,10 @@ taken, so opening the settings does not resize it. The settings are laid out as
 the Mac app's are: who is signed in to the service of the tab, what applies to
 the whole widget, and which of its usages the tray icons show.
 
-Colors follow the light or dark mode chosen for applications in Windows, asked
-again each time the panel opens.
+Colors follow the light or dark mode chosen for applications in the system,
+asked again each time the panel opens. The panel opens from the edge of the
+screen the platform's tray is on, and on a desktop with no tray it is an
+ordinary window instead.
 
 Until the first reading of a service arrives, its page is a skeleton: blocks
 where the plan, the rows and the countdown will be, pulsing slowly, so the page
@@ -74,7 +76,7 @@ from .capsule_bar import CapsuleBar
 from .core import LOADING_TEXT, ProviderView
 from .palette import current_palette
 from .switch import Switch
-from ..system import animations_enabled, apply_panel_chrome, work_area
+from ..system import EDGE_TOP, animations_enabled, apply_panel_chrome, panel_edge, work_area
 from .formatting import format_percent, format_subtitle
 
 PANEL_WIDTH = 430
@@ -371,6 +373,9 @@ class Panel:
 		# while its settings are open.
 		self._usage_heights: dict[str, float] = {}
 		self._hidden_at = 0.0
+		# Set when there is no tray to open the panel from, and the panel is an
+		# ordinary window of its own instead of a flyout.
+		self._standalone = False
 
 		self._window = tk.Toplevel(master)
 		self._window.withdraw()
@@ -378,9 +383,13 @@ class Panel:
 		self._window.overrideredirect(True)
 		self._window.attributes("-topmost", True)
 		self._window.resizable(False, False)
-		self._window.bind("<Escape>", lambda _event: self.hide())
+		self._window.bind("<Escape>", lambda _event: None if self._standalone else self.hide())
 		self._window.bind("<FocusOut>", self._on_focus_out)
 		self._window.bind("<MouseWheel>", self._on_mouse_wheel)
+		# X11 reports the wheel as presses of buttons 4 and 5 rather than as
+		# wheel events.
+		self._window.bind("<Button-4>", lambda _event: self._scroll_steps(1.0))
+		self._window.bind("<Button-5>", lambda _event: self._scroll_steps(-1.0))
 
 		self._canvas = tk.Canvas(
 			self._window,
@@ -389,6 +398,8 @@ class Panel:
 		)
 		self._canvas.pack(fill="both", expand=True)
 		self._canvas.bind("<MouseWheel>", self._on_mouse_wheel)
+		self._canvas.bind("<Button-4>", lambda _event: self._scroll_steps(1.0))
+		self._canvas.bind("<Button-5>", lambda _event: self._scroll_steps(-1.0))
 		self._canvas.bind("<Button-1>", self._on_click)
 		self._canvas.bind("<Motion>", self._on_motion)
 		self._canvas.bind("<Leave>", self._on_leave)
@@ -1574,8 +1585,10 @@ class Panel:
 			_event: The focus event. tkinter.Event.
 
 		Returns:
-			None.
+			None. An ordinary window is never dismissed for losing focus.
 		"""
+		if self._standalone:
+			return
 		self._window.after_idle(self._dismiss_if_unfocused)
 
 	def _dismiss_if_unfocused(self) -> None:
@@ -1794,7 +1807,19 @@ class Panel:
 		Returns:
 			None.
 		"""
-		self._scroll_to(self._scroll_offset + event.delta / 120.0 * self._unit(48), self._canvas.winfo_height())
+		self._scroll_steps(event.delta / 120.0)
+
+	def _scroll_steps(self, steps: float) -> None:
+		"""Scroll the panel by a number of wheel notches.
+
+		Args:
+			steps: Notches turned, positive towards the top. float.
+
+		Returns:
+			None.
+		"""
+		require_type(steps, (int, float), "steps")
+		self._scroll_to(self._scroll_offset + steps * self._unit(48), self._canvas.winfo_height())
 
 	def _on_frame(self, dt: float) -> bool:
 		"""Advance every spring and the spinner by one frame.
@@ -1856,10 +1881,18 @@ class Panel:
 		wanted = max(reading, self._content_height)
 		height = int(round(min(wanted, (bottom - top) - 2 * margin)))
 
-		x = max(left, right - width - margin)
-		y = max(top, bottom - height - margin)
 		self._canvas.configure(width=width, height=height)
-		self._window.geometry(f"{width}x{height}+{x}+{y}")
+		if self._standalone:
+			# The window manager places an ordinary window, and moving it from
+			# here at every redraw would fight the user who moved it.
+			self._window.geometry(f"{width}x{height}")
+		else:
+			x = max(left, right - width - margin)
+			if panel_edge() == EDGE_TOP:
+				y = top + margin
+			else:
+				y = max(top, bottom - height - margin)
+			self._window.geometry(f"{width}x{height}+{x}+{y}")
 		self._scroll_to(previous_offset, height)
 
 	def _sync_sign_in_code(self, view: ProviderView) -> None:
@@ -1915,7 +1948,7 @@ class Panel:
 		is actually in force rather than its own default.
 
 		Args:
-			enabled: Whether the widget starts with Windows. bool.
+			enabled: Whether the widget starts when the user signs in. bool.
 
 		Returns:
 			None.
@@ -2018,6 +2051,27 @@ class Panel:
 		self._ticker.stop()
 		self._window.withdraw()
 		self._hidden_at = time.monotonic()
+
+	def make_standalone(self, on_close: Callable[[], None]) -> None:
+		"""Turn the panel into an ordinary window, for a session with no tray.
+
+		The window gets a title bar and a place in the task list, stays open when
+		it loses focus, and closing it is reported rather than hiding it, since
+		without a tray there would be no way to open it again.
+
+		Args:
+			on_close: Called when the user closes the window. Callable taking no
+				arguments and returning None.
+
+		Returns:
+			None.
+		"""
+		if not callable(on_close):
+			raise TypeError("on_close must be callable")
+		self._standalone = True
+		self._window.overrideredirect(False)
+		self._window.attributes("-topmost", False)
+		self._window.protocol("WM_DELETE_WINDOW", on_close)
 
 	def dismissed_by_this_click(self) -> bool:
 		"""Return whether the panel went away just now, as part of the current click.

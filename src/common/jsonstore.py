@@ -20,6 +20,10 @@ from typing import Any
 from .validation import require_type
 
 TEMPORARY_SUFFIX = ".tmp"
+# Readable and writable by the user alone. One of the files holds sign-ins, and
+# on Linux a new file is otherwise readable by everyone on the machine. Windows
+# keeps per user application data private already and ignores the mode.
+PRIVATE_MODE = 0o600
 JSON_INDENT = "	"
 
 
@@ -68,6 +72,8 @@ def write_json(path: Path, document: dict[str, Any]) -> None:
 	temporary = path.with_name(path.name + TEMPORARY_SUFFIX)
 	try:
 		temporary.write_text(json.dumps(document, indent=JSON_INDENT), encoding="utf-8")
+		if os.name == "posix":
+			os.chmod(temporary, PRIVATE_MODE)
 		os.replace(temporary, path)
 	except OSError:
 		temporary.unlink(missing_ok=True)
