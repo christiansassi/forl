@@ -39,6 +39,10 @@ GNOME_EXTENSION_UUID = "usage@forl.io"
 GNOME_EXTENSION_SOURCE = Path(__file__).resolve().parent / "gnome" / GNOME_EXTENSION_UUID
 GNOME_EXTENSIONS_DIR = ("gnome-shell", "extensions")
 AUTOSTART_FILE = "forl.desktop"
+# The file that lets the session bus start the widget when the GNOME Shell
+# extension asks for it, and where the bus looks for the files of one user.
+BUS_SERVICE_FILE = "io.forl.Usage.service"
+BUS_SERVICES_DIR = ("dbus-1", "services")
 ENTRY_SCRIPT = Path(__file__).resolve().parent / "main.py"
 
 # How long a helper program may take to answer, in seconds. Each one is a
@@ -495,6 +499,56 @@ def install_gnome_extension() -> bool:
 		return False
 	target = _xdg_dir("XDG_DATA_HOME", ".local", "share").joinpath(*GNOME_EXTENSIONS_DIR) / GNOME_EXTENSION_UUID
 	return _install_tree(GNOME_EXTENSION_SOURCE, target)
+
+
+def install_bus_service() -> bool:
+	"""Tell the session bus how to start the widget, or bring that up to date.
+
+	The GNOME Shell extension opens the panel by calling the widget on the bus,
+	and the bus starts the widget for the call when it is not running, the way
+	macOS starts the Mac app for a widget. Written at every launch, like the
+	autostart entry, so it follows the widget when it is moved.
+
+	Returns:
+		bool: True when the file names this widget. False when it could not be
+		written.
+	"""
+	from .bus import BUS_NAME
+
+	entry = _xdg_dir("XDG_DATA_HOME", ".local", "share").joinpath(*BUS_SERVICES_DIR) / BUS_SERVICE_FILE
+	content = f"[D-BUS Service]\nName={BUS_NAME}\nExec={shlex.join(_command())}\n"
+	try:
+		if entry.is_file() and entry.read_text(encoding="utf-8") == content:
+			return True
+		entry.parent.mkdir(parents=True, exist_ok=True)
+		entry.write_text(content, encoding="utf-8")
+	except OSError:
+		return False
+	return True
+
+
+def create_status_service(
+	on_open: Callable[[str, str], None],
+	on_shell_change: Callable[[bool], None],
+) -> Any:
+	"""Return the service that offers the readings on the session bus, running.
+
+	Args:
+		on_open: Called from the service's thread with a service key and a view
+			when the extension asks for the panel. Callable taking two str and
+			returning None.
+		on_shell_change: Called from the service's thread with whether the
+			extension is now on the bus. Callable taking a bool and returning
+			None.
+
+	Returns:
+		StatusService or None: The service of src/linux/bus.py, or None when
+		there is no session bus or the name is taken.
+	"""
+	from .bus import StatusService
+
+	service = StatusService(on_open, on_shell_change)
+	return service if service.open() else None
 
 
 def status_dir() -> Path | None:

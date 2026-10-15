@@ -133,6 +133,27 @@ def status_dir() -> Path | None:
 	return None
 
 
+def create_status_service(
+	on_open: Callable[[str, str], None],
+	on_shell_change: Callable[[bool], None],
+) -> Any:
+	"""Return the service that offers the readings to the desktop.
+
+	Args:
+		on_open: Not called on Windows. Callable taking two str and returning
+			None.
+		on_shell_change: Not called on Windows. Callable taking a bool and
+			returning None.
+
+	Returns:
+		None: nothing on Windows asks for the readings over a bus, and the
+		notification area is always there.
+	"""
+	if not callable(on_open) or not callable(on_shell_change):
+		raise TypeError("on_open and on_shell_change must be callable")
+	return None
+
+
 def create_tray(
 	name: str,
 	draw: Callable[[float | None, int], Any],

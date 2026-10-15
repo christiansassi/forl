@@ -47,6 +47,7 @@ def main() -> int:
 
 	backend.install_plasma_widget()
 	backend.install_gnome_extension()
+	backend.install_bus_service()
 	return launcher.run(backend)
 
 

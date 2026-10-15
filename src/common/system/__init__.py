@@ -30,6 +30,7 @@ BACKEND_NAMES = (
 	"animations_enabled",
 	"apply_panel_chrome",
 	"claim_single_instance",
+	"create_status_service",
 	"create_tray",
 	"detach",
 	"enable_dpi_awareness",
@@ -145,6 +146,29 @@ def create_tray(
 		stop() methods.
 	"""
 	return _active().create_tray(name, draw, on_activate, on_menu, on_quit)
+
+
+def create_status_service(
+	on_open: Callable[[str, str], None],
+	on_shell_change: Callable[[bool], None],
+) -> Any:
+	"""Return the service that offers the readings to the desktop, already running.
+
+	Args:
+		on_open: Called from the service's own thread with a service key, or
+			an empty string for the tab last shown, and a view, "usage" or
+			"settings", when the desktop asks for the panel. Callable taking two
+			str and returning None.
+		on_shell_change: Called from the service's own thread with whether the
+			desktop's stand-in for a tray is now there. Callable taking a bool
+			and returning None.
+
+	Returns:
+		The platform's service, which has publish(document), shell_present()
+		and close() methods, or None on a platform without one or when it could
+		not be started.
+	"""
+	return _active().create_status_service(on_open, on_shell_change)
 
 
 def detach(name: str) -> None:
