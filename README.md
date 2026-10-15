@@ -17,9 +17,9 @@
 - [Introduction](#introduction)
 - [Demo (macOS)](#demo-macos)
 - [Installation](#installation)
-	- [macOS](#macos)
-	- [Windows](#windows)
-	- [Linux](#linux)
+	- [macOS](#-macos)
+	- [Windows](#-windows)
+	- [Linux](#-linux)
 
 # Introduction
 
@@ -86,8 +86,8 @@ The executable is written to `src/linux/dist/FORL`.
 | openSUSE Tumbleweed (KDE Plasma) | ✅ | ✅ | ✅ | ✅\*\*\* | ✅ |
 | Pop!_OS (COSMIC) | ✅ | ✅ | ✅ | ✅\*\*\* | ❌ |
 
-\* Needs the [AppIndicator and KStatusNotifierItem Support](https://extensions.gnome.org/extension/615/appindicator-support/) GNOME extension, which Ubuntu ships turned on. Without a tray, FORL opens its panel as an ordinary window, and closing it quits.<br>
-\*\* Depends on the desktop you install: the tray works on KDE Plasma, Cinnamon, XFCE, MATE, Budgie, COSMIC and in Waybar, and on GNOME with the extension above; the desktop widget needs KDE Plasma 6.<br>
+\* Needs the [AppIndicator and KStatusNotifierItem Support](https://extensions.gnome.org/extension/615/appindicator-support/) GNOME extension, which Ubuntu ships turned on. Without a tray, FORL opens its panel as an ordinary window, and closing it quits.<br><br>
+\*\* Depends on the desktop you install: the tray works on KDE Plasma, Cinnamon, XFCE, MATE, Budgie, COSMIC and in Waybar, and on GNOME with the extension above; the desktop widget needs KDE Plasma 6.<br><br>
 \*\*\* Needs a bar that shows a command's output, such as Waybar, Polybar or i3blocks, or on GNOME an extension such as [Executor](https://extensions.gnome.org/extension/2932/executor/).
 
 ### Status bar
