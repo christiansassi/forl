@@ -38,6 +38,10 @@ PLASMA_WIDGETS_DIR = ("plasma", "plasmoids")
 GNOME_EXTENSION_UUID = "usage@forl.io"
 GNOME_EXTENSION_SOURCE = Path(__file__).resolve().parent / "gnome" / GNOME_EXTENSION_UUID
 GNOME_EXTENSIONS_DIR = ("gnome-shell", "extensions")
+# The marks and the app icon the extension draws, shared with the panel and
+# copied in beside it rather than kept twice in the tree.
+SHARED_ASSETS_DIR = Path(__file__).resolve().parents[1] / "common" / "assets"
+GNOME_EXTENSION_ASSETS = "assets"
 AUTOSTART_FILE = "forl.desktop"
 # The file that lets the session bus start the widget when the GNOME Shell
 # extension asks for it, and where the bus looks for the files of one user.
@@ -491,6 +495,9 @@ def install_gnome_extension() -> bool:
 	Shell's own settings, the same way the Plasma widget is only offered in Add
 	Widgets. A copy that already matches is left alone.
 
+	The extension draws the provider marks and the app icon as the panel does,
+	so the shared artwork is copied in with it.
+
 	Returns:
 		bool: True when the extension is installed and current. False on a
 		desktop that is not GNOME, or when it could not be copied.
@@ -498,7 +505,8 @@ def install_gnome_extension() -> bool:
 	if "GNOME" not in _desktops():
 		return False
 	target = _xdg_dir("XDG_DATA_HOME", ".local", "share").joinpath(*GNOME_EXTENSIONS_DIR) / GNOME_EXTENSION_UUID
-	return _install_tree(GNOME_EXTENSION_SOURCE, target)
+	installed = _install_tree(GNOME_EXTENSION_SOURCE, target)
+	return _install_tree(SHARED_ASSETS_DIR, target / GNOME_EXTENSION_ASSETS) and installed
 
 
 def install_bus_service() -> bool:
