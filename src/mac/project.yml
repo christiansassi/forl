@@ -38,10 +38,10 @@ targets:
       - name: Cut the shared app icon
         script: |
           set -eu
-          bash "$SRCROOT/Tools/GenerateAppIcon.sh" "$SRCROOT/../common/assets/icon.png" "$SRCROOT/FORL/Resources/AppIcon.xcassets/AppIcon.appiconset"
+          bash "$SRCROOT/Tools/GenerateAppIcon.sh" "$SRCROOT/FORL/Resources/AppIcon.png" "$SRCROOT/FORL/Resources/AppIcon.xcassets/AppIcon.appiconset"
         inputFiles:
           - $(SRCROOT)/Tools/GenerateAppIcon.sh
-          - $(SRCROOT)/../common/assets/icon.png
+          - $(SRCROOT)/FORL/Resources/AppIcon.png
         outputFiles:
           - $(SRCROOT)/FORL/Resources/AppIcon.xcassets/AppIcon.appiconset/Contents.json
     sources:

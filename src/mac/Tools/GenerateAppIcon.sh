@@ -1,10 +1,11 @@
 #!/bin/bash
 # Cut the shared app icon into the sizes the macOS app catalog needs.
 #
-# The icon lives once, at src/common/assets/icon.png, so that the Mac app and the
-# Windows executable are built from the same artwork. That file is a 1024 by 1024
-# PNG with an alpha channel; every size below is derived from it here, at build
-# time, rather than kept in the repository as ten near-copies of one drawing.
+# The Mac icon lives once, at src/mac/FORL/Resources/AppIcon.png: the smiley the
+# Windows executable uses, on the black rounded square of a macOS app icon. That
+# file is a 1024 by 1024 PNG with an alpha channel; every size below is derived
+# from it here, at build time, rather than kept in the repository as ten
+# near-copies of one drawing.
 #
 # A missing source leaves whatever the catalog already holds, so a checkout with
 # no icon of its own still builds, and the catalog index is written either way so

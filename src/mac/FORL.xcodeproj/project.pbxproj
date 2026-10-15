@@ -387,7 +387,7 @@
 			);
 			inputPaths = (
 				"$(SRCROOT)/Tools/GenerateAppIcon.sh",
-				"$(SRCROOT)/../common/assets/icon.png",
+				"$(SRCROOT)/FORL/Resources/AppIcon.png",
 			);
 			name = "Cut the shared app icon";
 			outputFileListPaths = (
@@ -397,7 +397,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -eu\nbash \"$SRCROOT/Tools/GenerateAppIcon.sh\" \"$SRCROOT/../common/assets/icon.png\" \"$SRCROOT/FORL/Resources/AppIcon.xcassets/AppIcon.appiconset\"\n";
+			shellScript = "set -eu\nbash \"$SRCROOT/Tools/GenerateAppIcon.sh\" \"$SRCROOT/FORL/Resources/AppIcon.png\" \"$SRCROOT/FORL/Resources/AppIcon.xcassets/AppIcon.appiconset\"\n";
 		};
 		B195661FB2E816B69DCAF40E /* Generate Control Center gauges */ = {
 			isa = PBXShellScriptBuildPhase;

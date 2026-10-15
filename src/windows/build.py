@@ -26,10 +26,11 @@ ICON_SIZES = [16, 24, 32, 48, 64, 128, 256]
 def build_icon() -> Path | None:
 	"""Cut the shared app icon into the multi-size .ico Windows expects.
 
-	The icon lives once, at src/common/assets/icon.png, so that the executable
-	and the Mac app are built from the same artwork. Windows picks the frame
-	closest to the size it is drawing, so every frame the shell asks for is
-	written into one file rather than left to be scaled from a single bitmap.
+	The icon lives once, at src/common/assets/icon.png, where the tray reads it
+	as well, so the executable and the tray icon are the same artwork. Windows
+	picks the frame closest to the size it is drawing, so every frame the shell
+	asks for is written into one file rather than left to be scaled from a
+	single bitmap.
 
 	Returns:
 		Path | None: The generated .ico, or None when the shared icon is absent,
