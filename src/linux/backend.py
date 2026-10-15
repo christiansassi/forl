@@ -33,6 +33,11 @@ APP_DIR_NAME = "forl"
 PLASMA_WIDGET_ID = "io.forl.usage"
 PLASMA_WIDGET_SOURCE = Path(__file__).resolve().parent / "plasma" / PLASMA_WIDGET_ID
 PLASMA_WIDGETS_DIR = ("plasma", "plasmoids")
+# The GNOME Shell extension, likewise, and where the Shell looks for the
+# extensions of one user.
+GNOME_EXTENSION_UUID = "usage@forl.io"
+GNOME_EXTENSION_SOURCE = Path(__file__).resolve().parent / "gnome" / GNOME_EXTENSION_UUID
+GNOME_EXTENSIONS_DIR = ("gnome-shell", "extensions")
 AUTOSTART_FILE = "forl.desktop"
 ENTRY_SCRIPT = Path(__file__).resolve().parent / "main.py"
 
@@ -470,6 +475,26 @@ def install_plasma_widget() -> bool:
 		return False
 	target = _xdg_dir("XDG_DATA_HOME", ".local", "share").joinpath(*PLASMA_WIDGETS_DIR) / PLASMA_WIDGET_ID
 	return _install_tree(PLASMA_WIDGET_SOURCE, target)
+
+
+def install_gnome_extension() -> bool:
+	"""Install the GNOME Shell extension for this user, or bring it up to date.
+
+	Done at every launch on a GNOME desktop, by copying the extension into the
+	directory GNOME Shell lists a user's extensions from, so it is in the
+	Extensions app without the user installing anything. It is installed and
+	never turned on: whether an extension runs is the user's choice in the
+	Shell's own settings, the same way the Plasma widget is only offered in Add
+	Widgets. A copy that already matches is left alone.
+
+	Returns:
+		bool: True when the extension is installed and current. False on a
+		desktop that is not GNOME, or when it could not be copied.
+	"""
+	if "GNOME" not in _desktops():
+		return False
+	target = _xdg_dir("XDG_DATA_HOME", ".local", "share").joinpath(*GNOME_EXTENSIONS_DIR) / GNOME_EXTENSION_UUID
+	return _install_tree(GNOME_EXTENSION_SOURCE, target)
 
 
 def status_dir() -> Path | None:

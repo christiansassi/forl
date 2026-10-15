@@ -1,0 +1,55 @@
+/*
+ * The menu of the FORL extension. The colors are the ends and the middle of
+ * the usage ramp the panel draws its bars with, in src/common/render/theme.py.
+ */
+
+.forl-heading {
+	font-weight: bold;
+}
+
+.forl-usage {
+	min-width: 9em;
+	padding-right: 12px;
+}
+
+.forl-bar {
+	width: 120px;
+	height: 6px;
+	border-radius: 3px;
+	background-color: rgba(128, 128, 128, 0.3);
+}
+
+.forl-fill {
+	height: 6px;
+	border-radius: 3px;
+}
+
+.forl-fill-ok {
+	background-color: rgb(48, 209, 88);
+}
+
+.forl-fill-warning {
+	background-color: rgb(227, 193, 59);
+}
+
+.forl-fill-critical {
+	background-color: rgb(255, 69, 58);
+}
+
+.forl-percent {
+	min-width: 3em;
+	text-align: right;
+	padding-left: 12px;
+}
+
+.forl-text-ok {
+	color: rgb(48, 209, 88);
+}
+
+.forl-text-warning {
+	color: rgb(227, 193, 59);
+}
+
+.forl-text-critical {
+	color: rgb(255, 69, 58);
+}

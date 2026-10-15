@@ -57,6 +57,8 @@ def main() -> int:
 		"--add-data", f"{ASSETS_DIR}:src/common/assets",
 		# The KDE Plasma widget, which the executable installs on a Plasma desktop.
 		"--add-data", f"{LINUX_DIR / 'plasma'}:src/linux/plasma",
+		# The GNOME Shell extension, which the executable installs on GNOME.
+		"--add-data", f"{LINUX_DIR / 'gnome'}:src/linux/gnome",
 		"--hidden-import", "PIL._tkinter_finder",
 		str(LINUX_DIR / "main.py"),
 	], cwd=LINUX_DIR, env=environment).returncode
