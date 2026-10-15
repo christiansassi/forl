@@ -1,0 +1,8 @@
+{
+	"uuid": "usage@forl.io",
+	"name": "FORL",
+	"description": "Claude and ChatGPT usage limits, as FORL last read them",
+	"url": "https://github.com/russoanto/forl",
+	"version-name": "1.0",
+	"shell-version": ["45", "46", "47", "48", "49", "50", "51"]
+}

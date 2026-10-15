@@ -42,12 +42,12 @@ from ..render.icon import render_icon
 from ..render.svg import ASSETS_DIR
 from ..render.theme import LABEL_PRIMARY
 from ..settings.store import load_show_plan, load_start_on_startup, save_show_plan, save_start_on_startup
-from ..system import create_tray, enable_dpi_awareness, set_startup_entry, status_dir, tray_available
+from ..system import create_status_service, create_tray, enable_dpi_awareness, set_startup_entry, status_dir, tray_available
 from ..validation import require_member, require_non_empty_str, require_positive_int, require_type
 from .core import DEFAULT_POLL_SECONDS, QUIT_KEY, MetricReading, ProviderView, WidgetCore, quit_rows
 from .menu import TrayMenu
-from .panel import USAGE_VIEW, Panel
-from .status import write_status
+from .panel import PANEL_VIEWS, USAGE_VIEW, Panel
+from .status import status_document, write_status
 
 DRAIN_INTERVAL_MS = 120
 
@@ -129,7 +129,7 @@ class WidgetApp:
 			providers,
 			describe=self._describe,
 			on_startup_change=self._set_startup,
-			on_show_plan_change=save_show_plan,
+			on_show_plan_change=self._set_show_plan,
 			on_sign_in=lambda key: self._core(key).sign_in_now(),
 			on_sign_out=lambda key: self._core(key).sign_out(),
 			on_open_sign_in=lambda key: self._core(key).open_sign_in_link(),
@@ -138,12 +138,22 @@ class WidgetApp:
 			on_toggle_panel_metric=lambda key, metric: self._core(key).toggle_panel_metric(metric),
 		)
 		self._panel.set_startup(self._start_on_startup)
-		self._panel.set_show_plan(load_show_plan())
+		self._show_plan = load_show_plan()
+		self._panel.set_show_plan(self._show_plan)
 		self._menu = TrayMenu(self._root, on_choose=self._choose)
 		self._status_dir = status_dir()
 		self._has_tray = tray_available()
 		self._trays: dict[str, Any] = {}
 		self._app_icon: Any = None
+		self._status_service = create_status_service(
+			lambda key, view: self._post(lambda: self._open_for_desktop(key, view)),
+			lambda present: self._post(lambda: self._follow_shell(present)),
+		)
+		# With no tray, the GNOME Shell extension stands in for one while it is
+		# turned on: the panel then opens from the top bar when the extension
+		# asks, and hides when it loses focus, as it would from a tray.
+		self._hosted = not self._has_tray and self._status_service is not None and self._status_service.shell_present()
+		self._standalone = False
 		if self._has_tray:
 			self._trays = {provider.key: self._tray_for(provider) for provider in providers}
 			self._app_icon = create_tray(
@@ -153,11 +163,62 @@ class WidgetApp:
 				lambda x, y: self._post(lambda: self._open_menu(x, y)),
 				lambda: self._post(self.shutdown),
 			)
-		else:
-			self._panel.make_standalone(self.shutdown)
-			# Kept on the app, because Tk keeps only a weak reference to it.
-			self._window_icon = ImageTk.PhotoImage(_app_artwork(WINDOW_ICON_SIZE), master=self._root)
-			self._root.iconphoto(True, self._window_icon)
+		elif not self._hosted:
+			self._make_window()
+
+	def _make_window(self) -> None:
+		"""Turn the panel into an ordinary window, the only way into the widget.
+
+		Returns:
+			None.
+		"""
+		self._standalone = True
+		self._panel.make_standalone(self.shutdown)
+		# Kept on the app, because Tk keeps only a weak reference to it.
+		self._window_icon = ImageTk.PhotoImage(_app_artwork(WINDOW_ICON_SIZE), master=self._root)
+		self._root.iconphoto(True, self._window_icon)
+
+	def _open_for_desktop(self, provider_key: str, view: str) -> None:
+		"""Open the panel because the desktop asked for it, as a tray click would.
+
+		Args:
+			provider_key: Key of the service whose tab to open on, or an empty
+				string, or one this widget does not know, for the tab last shown.
+				str.
+			view: "usage" or "settings"; anything else opens the reading. str.
+
+		Returns:
+			None.
+		"""
+		require_type(provider_key, str, "provider_key")
+		require_type(view, str, "view")
+		self._panel.show(
+			view if view in PANEL_VIEWS else USAGE_VIEW,
+			provider_key if provider_key in self._keys else "",
+		)
+
+	def _follow_shell(self, present: bool) -> None:
+		"""Fall back to a window when the extension standing in for a tray goes away.
+
+		The extension can be turned off while the widget runs, and with no tray
+		nothing else could open the panel again. One that arrives later leaves a
+		window as it is: the extension opens it just the same.
+
+		Args:
+			present: Whether the extension is now on the bus. bool.
+
+		Returns:
+			None.
+		"""
+		require_type(present, bool, "present")
+		if present or not self._hosted or self._standalone:
+			return
+		self._hosted = False
+		# A window takes on its new kind only when it is shown again, so the
+		# panel is taken off screen before it becomes a window.
+		self._panel.hide()
+		self._make_window()
+		self._panel.show(USAGE_VIEW)
 
 	def _tray_icons(self) -> tuple[Any, ...]:
 		"""Return every set of tray icons, the app's own first.
@@ -268,6 +329,23 @@ class WidgetApp:
 		self._start_on_startup = enabled
 		save_start_on_startup(enabled)
 
+	def _set_show_plan(self, enabled: bool) -> None:
+		"""Store whether the panel names the plan, and tell the status files.
+
+		Widgets drawn like the panel read the choice from status.json, so it is
+		rewritten at once rather than at the next reading.
+
+		Args:
+			enabled: What the user set the switch to. bool.
+
+		Returns:
+			None.
+		"""
+		require_type(enabled, bool, "enabled")
+		self._show_plan = enabled
+		save_show_plan(enabled)
+		self._write_status()
+
 	def _open_menu(self, x: int, y: int) -> None:
 		"""Open the menu of a tray icon at the pointer.
 
@@ -297,6 +375,19 @@ class WidgetApp:
 		if key == QUIT_KEY:
 			self.shutdown()
 
+	def _write_status(self) -> None:
+		"""Write the readings where status bars and desktop widgets read them.
+
+		Returns:
+			None. Does nothing on a platform that names no directory for them.
+		"""
+		views = tuple(self._describe(provider.key) for provider in self._providers)
+		document = status_document(views, self._has_tray, self._show_plan)
+		if self._status_dir is not None:
+			write_status(self._status_dir, views, document)
+		if self._status_service is not None:
+			self._status_service.publish(document)
+
 	def _refresh_surfaces(self) -> None:
 		"""Redraw every tray icon, the panel when it is open, and the status files.
 
@@ -304,8 +395,7 @@ class WidgetApp:
 			None.
 		"""
 		self._panel.refresh()
-		if self._status_dir is not None:
-			write_status(self._status_dir, tuple(self._describe(provider.key) for provider in self._providers))
+		self._write_status()
 		if not self._has_tray:
 			return
 		showing = False
@@ -361,6 +451,8 @@ class WidgetApp:
 			core.stop()
 		for tray in self._tray_icons():
 			tray.stop()
+		if self._status_service is not None:
+			self._status_service.close()
 		self._root.quit()
 
 	def run(self) -> None:
@@ -375,13 +467,14 @@ class WidgetApp:
 		self._drain_job = self._root.after(DRAIN_INTERVAL_MS, self._drain_events)
 		for core in self._cores.values():
 			core.start()
-		if not self._has_tray:
+		if self._standalone:
 			# The window is the only way into the widget, so it is always shown.
 			self._root.after(DRAIN_INTERVAL_MS, lambda: self._panel.show(USAGE_VIEW))
 		elif not any(core.signed_in for core in self._cores.values()):
-			# Nobody is signed in, so there is nothing in the notification area
-			# worth finding; the panel is put in front of the user instead, on
-			# the page that starts a sign-in, as the Mac app does.
+			# Nobody is signed in, so there is nothing in the notification area,
+			# or in the extension standing in for it, worth finding; the panel is
+			# put in front of the user instead, on the page that starts a
+			# sign-in, as the Mac app does.
 			self._root.after(DRAIN_INTERVAL_MS, lambda: self._panel.show(USAGE_VIEW))
 		try:
 			self._root.mainloop()

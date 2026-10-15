@@ -77,9 +77,9 @@ The executable is written to `src/linux/dist/FORL`.
 
 | Distribution (default desktop) | Tray icons | Panel and settings | Start at login | Status bar | Desktop widget |
 |---|:-:|:-:|:-:|:-:|:-:|
-| Ubuntu (GNOME) | ✅ | ✅ | ✅ | ✅\*\*\* | ❌ |
-| Fedora Workstation (GNOME) | ✅\* | ✅ | ✅ | ✅\*\*\* | ❌ |
-| Debian (GNOME) | ✅\* | ✅ | ✅ | ✅\*\*\* | ❌ |
+| Ubuntu (GNOME) | ✅ | ✅ | ✅ | ✅\*\*\* | ✅\*\*\*\* |
+| Fedora Workstation (GNOME) | ✅\* | ✅ | ✅ | ✅\*\*\* | ✅\*\*\*\* |
+| Debian (GNOME) | ✅\* | ✅ | ✅ | ✅\*\*\* | ✅\*\*\*\* |
 | Linux Mint (Cinnamon) | ✅ | ✅ | ✅ | ✅\*\*\* | ❌ |
 | Arch Linux (none) | ✅\*\* | ✅ | ✅ | ✅\*\*\* | ✅\*\* |
 | Manjaro (KDE Plasma) | ✅ | ✅ | ✅ | ✅\*\*\* | ✅ |
@@ -87,8 +87,9 @@ The executable is written to `src/linux/dist/FORL`.
 | Pop!_OS (COSMIC) | ✅ | ✅ | ✅ | ✅\*\*\* | ❌ |
 
 \* Needs the [AppIndicator and KStatusNotifierItem Support](https://extensions.gnome.org/extension/615/appindicator-support/) GNOME extension, which Ubuntu ships turned on. Without a tray, FORL opens its panel as an ordinary window, and closing it quits.<br><br>
-\*\* Depends on the desktop you install: the tray works on KDE Plasma, Cinnamon, XFCE, MATE, Budgie, COSMIC and in Waybar, and on GNOME with the extension above; the desktop widget needs KDE Plasma 6.<br><br>
-\*\*\* Needs a bar that shows a command's output, such as Waybar, Polybar or i3blocks, or on GNOME an extension such as [Executor](https://extensions.gnome.org/extension/2932/executor/).
+\*\* Depends on the desktop you install: the tray works on KDE Plasma, Cinnamon, XFCE, MATE, Budgie, COSMIC and in Waybar, and on GNOME with the extension above; the desktop widget needs KDE Plasma 6, or GNOME 45 or later.<br><br>
+\*\*\* Needs a bar that shows a command's output, such as Waybar, Polybar or i3blocks, or on GNOME FORL's own extension (see below) or one such as [Executor](https://extensions.gnome.org/extension/2932/executor/).<br><br>
+\*\*\*\* On GNOME the widget is an extension that puts FORL's tray icons in the top bar and opens the same panel, and needs GNOME 45 or later. Where FORL already has tray icons, as on Ubuntu, it stays hidden so the readings are not shown twice.
 
 ### Status bar
 
@@ -97,3 +98,15 @@ FORL writes each service's reading to `~/.cache/forl/claude.json` and `~/.cache/
 ### Desktop widget
 
 On KDE Plasma 6, FORL installs its widget when it starts: add it from **Add Widgets**.
+
+### GNOME extension
+
+On GNOME 45 or later, FORL installs its extension when it starts but does not turn it on: turn it on in the **Extensions** app, or with
+
+```bash
+gnome-extensions enable usage@forl.io
+```
+
+On Wayland, GNOME Shell only sees a newly installed extension after you log out and back in.
+
+The extension and FORL talk over the session bus: the readings reach the top bar as soon as FORL takes them, the extension tells you when FORL is not running, and signing in or the settings open FORL's own panel, starting FORL first when it is closed. While the extension is on, FORL opens its panel from the top bar as it would from a tray.

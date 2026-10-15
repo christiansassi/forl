@@ -5,8 +5,9 @@
 Everything but what Linux alone does lives in src/common and is shared with
 the Windows widget; this installs the Linux backend and starts it. The widget
 puts its icons in the desktop's tray, writes its readings where status bars and
-the KDE Plasma widget read them, installs that widget on a Plasma desktop, and
-on a desktop with no tray opens its panel as an ordinary window instead.
+the KDE Plasma widget and the GNOME Shell extension read them, installs that
+widget on a Plasma desktop and that extension on a GNOME one, and on a desktop
+with no tray opens its panel as an ordinary window instead.
 
 The interface is drawn with Tk, which speaks X11. Every desktop that runs on
 Wayland also runs X11 programs through XWayland, so this needs nothing extra;
@@ -45,6 +46,8 @@ def main() -> int:
 	from src.linux import backend
 
 	backend.install_plasma_widget()
+	backend.install_gnome_extension()
+	backend.install_bus_service()
 	return launcher.run(backend)
 
 

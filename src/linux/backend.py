@@ -33,7 +33,20 @@ APP_DIR_NAME = "forl"
 PLASMA_WIDGET_ID = "io.forl.usage"
 PLASMA_WIDGET_SOURCE = Path(__file__).resolve().parent / "plasma" / PLASMA_WIDGET_ID
 PLASMA_WIDGETS_DIR = ("plasma", "plasmoids")
+# The GNOME Shell extension, likewise, and where the Shell looks for the
+# extensions of one user.
+GNOME_EXTENSION_UUID = "usage@forl.io"
+GNOME_EXTENSION_SOURCE = Path(__file__).resolve().parent / "gnome" / GNOME_EXTENSION_UUID
+GNOME_EXTENSIONS_DIR = ("gnome-shell", "extensions")
+# The marks and the app icon the extension draws, shared with the panel and
+# copied in beside it rather than kept twice in the tree.
+SHARED_ASSETS_DIR = Path(__file__).resolve().parents[1] / "common" / "assets"
+GNOME_EXTENSION_ASSETS = "assets"
 AUTOSTART_FILE = "forl.desktop"
+# The file that lets the session bus start the widget when the GNOME Shell
+# extension asks for it, and where the bus looks for the files of one user.
+BUS_SERVICE_FILE = "io.forl.Usage.service"
+BUS_SERVICES_DIR = ("dbus-1", "services")
 ENTRY_SCRIPT = Path(__file__).resolve().parent / "main.py"
 
 # How long a helper program may take to answer, in seconds. Each one is a
@@ -420,6 +433,40 @@ def set_startup_entry(enabled: bool) -> bool:
 	return True
 
 
+def _install_tree(source: Path, target: Path) -> bool:
+	"""Copy a directory that ships with the widget to where a desktop reads it.
+
+	Only the files that differ are written, so a copy that already matches is
+	left alone and the desktop sees no change to pick up.
+
+	Args:
+		source: The directory as it ships, beside this module or inside the
+			built executable. Path.
+		target: Where the desktop looks for it, created when missing. Path.
+
+	Returns:
+		bool: True when the target now matches the source. False when the
+		source is missing or a file could not be copied.
+	"""
+	require_type(source, Path, "source")
+	require_type(target, Path, "target")
+	if not source.is_dir():
+		return False
+	try:
+		for path in source.rglob("*"):
+			if not path.is_file():
+				continue
+			destination = target / path.relative_to(source)
+			content = path.read_bytes()
+			if destination.is_file() and destination.read_bytes() == content:
+				continue
+			destination.parent.mkdir(parents=True, exist_ok=True)
+			destination.write_bytes(content)
+	except OSError:
+		return False
+	return True
+
+
 def install_plasma_widget() -> bool:
 	"""Install the KDE Plasma widget for this user, or bring it up to date.
 
@@ -432,22 +479,84 @@ def install_plasma_widget() -> bool:
 		bool: True when the widget is installed and current. False on a desktop
 		that is not Plasma, or when it could not be copied.
 	"""
-	if "KDE" not in _desktops() or not PLASMA_WIDGET_SOURCE.is_dir():
+	if "KDE" not in _desktops():
 		return False
 	target = _xdg_dir("XDG_DATA_HOME", ".local", "share").joinpath(*PLASMA_WIDGETS_DIR) / PLASMA_WIDGET_ID
+	return _install_tree(PLASMA_WIDGET_SOURCE, target)
+
+
+def install_gnome_extension() -> bool:
+	"""Install the GNOME Shell extension for this user, or bring it up to date.
+
+	Done at every launch on a GNOME desktop, by copying the extension into the
+	directory GNOME Shell lists a user's extensions from, so it is in the
+	Extensions app without the user installing anything. It is installed and
+	never turned on: whether an extension runs is the user's choice in the
+	Shell's own settings, the same way the Plasma widget is only offered in Add
+	Widgets. A copy that already matches is left alone.
+
+	The extension draws the provider marks and the app icon as the panel does,
+	so the shared artwork is copied in with it.
+
+	Returns:
+		bool: True when the extension is installed and current. False on a
+		desktop that is not GNOME, or when it could not be copied.
+	"""
+	if "GNOME" not in _desktops():
+		return False
+	target = _xdg_dir("XDG_DATA_HOME", ".local", "share").joinpath(*GNOME_EXTENSIONS_DIR) / GNOME_EXTENSION_UUID
+	installed = _install_tree(GNOME_EXTENSION_SOURCE, target)
+	return _install_tree(SHARED_ASSETS_DIR, target / GNOME_EXTENSION_ASSETS) and installed
+
+
+def install_bus_service() -> bool:
+	"""Tell the session bus how to start the widget, or bring that up to date.
+
+	The GNOME Shell extension opens the panel by calling the widget on the bus,
+	and the bus starts the widget for the call when it is not running, the way
+	macOS starts the Mac app for a widget. Written at every launch, like the
+	autostart entry, so it follows the widget when it is moved.
+
+	Returns:
+		bool: True when the file names this widget. False when it could not be
+		written.
+	"""
+	from .bus import BUS_NAME
+
+	entry = _xdg_dir("XDG_DATA_HOME", ".local", "share").joinpath(*BUS_SERVICES_DIR) / BUS_SERVICE_FILE
+	content = f"[D-BUS Service]\nName={BUS_NAME}\nExec={shlex.join(_command())}\n"
 	try:
-		for source in PLASMA_WIDGET_SOURCE.rglob("*"):
-			if not source.is_file():
-				continue
-			destination = target / source.relative_to(PLASMA_WIDGET_SOURCE)
-			content = source.read_bytes()
-			if destination.is_file() and destination.read_bytes() == content:
-				continue
-			destination.parent.mkdir(parents=True, exist_ok=True)
-			destination.write_bytes(content)
+		if entry.is_file() and entry.read_text(encoding="utf-8") == content:
+			return True
+		entry.parent.mkdir(parents=True, exist_ok=True)
+		entry.write_text(content, encoding="utf-8")
 	except OSError:
 		return False
 	return True
+
+
+def create_status_service(
+	on_open: Callable[[str, str], None],
+	on_shell_change: Callable[[bool], None],
+) -> Any:
+	"""Return the service that offers the readings on the session bus, running.
+
+	Args:
+		on_open: Called from the service's thread with a service key and a view
+			when the extension asks for the panel. Callable taking two str and
+			returning None.
+		on_shell_change: Called from the service's thread with whether the
+			extension is now on the bus. Callable taking a bool and returning
+			None.
+
+	Returns:
+		StatusService or None: The service of src/linux/bus.py, or None when
+		there is no session bus or the name is taken.
+	"""
+	from .bus import StatusService
+
+	service = StatusService(on_open, on_shell_change)
+	return service if service.open() else None
 
 
 def status_dir() -> Path | None:
