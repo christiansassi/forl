@@ -22,13 +22,6 @@ struct CodexProvider: Provider {
 	let identity = providerIdentity(for: "chatgpt")!
 
 	private static let usageURL = URL(string: "https://chatgpt.com/backend-api/codex/usage")!
-	private static let modelsURL = URL(string: "https://chatgpt.com/backend-api/codex/models?client_version=99.0.0")!
-	private static let responsesURL = URL(string: "https://chatgpt.com/backend-api/codex/responses")!
-	/// What is used when the model list names nothing usable.
-	private static let fallbackModel = "gpt-5.4-mini"
-	/// How a model the list shows to users is marked, and how a small one is named.
-	private static let listedVisibility = "list"
-	private static let smallModelMark = "mini"
 	private static let userAgent = "forl/1.0"
 	private static let originator = "codex_cli_rs"
 
@@ -137,40 +130,6 @@ struct CodexProvider: Provider {
 		throw UsageError.authentication(OAuth.expiredMessage)
 	}
 
-	/// Send one short message, which starts the five hour session if none is
-	/// running.
-	///
-	/// The smallest model the account is offered is asked, since nobody reads
-	/// the answer; when the list cannot be had, a small model known to exist is.
-	///
-	/// - Returns: Nothing, once the message has been accepted.
-	/// - Throws: `UsageError` when the sign-in cannot be used or the endpoint
-	///   cannot be reached.
-	func startSession() async throws {
-		let tokens = try await OAuth.usable(client: oauth)
-		let listed = try? await HTTP.fetchJSON(url: Self.modelsURL, headers: Self.headers(tokens: tokens, accept: "application/json"))
-		let (model, instructions) = Self.smallestModel(listed ?? [:])
-		try await HTTP.postJSON(
-			url: Self.responsesURL,
-			body: [
-				"model": model,
-				"instructions": instructions,
-				"input": [[
-					"type": "message",
-					"role": "user",
-					"content": [["type": "input_text", "text": SessionStart.messageText]],
-				]],
-				"tools": [] as [Any],
-				"tool_choice": "auto",
-				"parallel_tool_calls": false,
-				// The endpoint serves nothing but streams, and keeps nothing it is sent.
-				"store": false,
-				"stream": true,
-			],
-			headers: Self.headers(tokens: tokens, accept: "text/event-stream")
-		)
-	}
-
 	/// Return the headers every authenticated ChatGPT request carries.
 	///
 	/// - Parameters:
@@ -188,30 +147,6 @@ struct CodexProvider: Provider {
 			headers["chatgpt-account-id"] = accountID
 		}
 		return headers
-	}
-
-	/// Return the smallest model a model list offers, and its instructions.
-	///
-	/// A model named as a small one is taken first. Otherwise the one the list
-	/// ranks last is, since the list puts its largest models first.
-	///
-	/// - Parameter document: The decoded model list.
-	/// - Returns: The model's name and the instructions to send with it, or the
-	///   fallback model and no instructions when the list names nothing usable.
-	static func smallestModel(_ document: [String: Any]) -> (model: String, instructions: String) {
-		let listed = (document["models"] as? [[String: Any]] ?? []).filter { model in
-			guard let slug = model["slug"] as? String, !slug.trimmingCharacters(in: .whitespaces).isEmpty else {
-				return false
-			}
-			return (model["visibility"] as? String ?? listedVisibility) == listedVisibility
-		}
-		guard !listed.isEmpty else {
-			return (fallbackModel, "")
-		}
-		let small = listed.filter { ($0["slug"] as? String ?? "").contains(smallModelMark) }
-		let rank: ([String: Any]) -> Double = { ($0["priority"] as? NSNumber)?.doubleValue ?? 0 }
-		let chosen = (small.isEmpty ? listed : small).max { rank($0) < rank($1) } ?? listed[0]
-		return (chosen["slug"] as? String ?? fallbackModel, chosen["base_instructions"] as? String ?? "")
 	}
 
 	/// Return the claims of the identity token in a token endpoint answer.

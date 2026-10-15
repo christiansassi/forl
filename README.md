@@ -42,7 +42,7 @@ This tool helps you keep track of your usage and stay within your limits. It cur
 > Requires macOS 15 or later and Xcode.
 
 1. Open `src/mac/FORL.xcodeproj` in Xcode.
-2. For both the `FORL` and `FORLWidgets` targets, select your team under **Signing & Capabilities**.
+2. For both the `FORL` and `FORLWidgets` targets, open **Signing & Capabilities**, select your team, and set **Signing Certificate** to **Sign to Run Locally**.
 3. Build and install the app:
 
 	```bash

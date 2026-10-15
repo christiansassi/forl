@@ -10,9 +10,6 @@ a reset time for every window.
 It names no plan, so the plan shown beside the product name comes from the
 account endpoint, asked alongside every reading. That is one small extra request
 a minute and it is what lets an upgrade show up without signing in again.
-
-Starting a session is one message to the smallest model, asking for a single
-token back, which is as little of the session as a message can use.
 """
 
 from __future__ import annotations
@@ -23,8 +20,7 @@ from typing import Any, Callable, NamedTuple
 from ..auth import oauth, store
 from ..auth.oauth import CodeOffer, OAuthClient
 from ..usage.errors import CredentialsError, UsageRequestError
-from ..schedule.session_start import MESSAGE_TEXT
-from ..usage.http import fetch_json, post_json
+from ..usage.http import fetch_json
 from ..usage.snapshot import (
 	SESSION_KEY,
 	SESSION_LABEL,
@@ -43,12 +39,7 @@ LABEL = "Claude"
 
 USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 PROFILE_URL = "https://api.anthropic.com/api/oauth/profile"
-MESSAGES_URL = "https://api.anthropic.com/v1/messages"
 OAUTH_BETA_HEADER = "oauth-2025-04-20"
-API_VERSION = "2023-06-01"
-# The smallest model, which is also the one a sign-in of this kind may send to
-# without presenting itself as the tool the sign-in was made for.
-SESSION_START_MODEL = "claude-haiku-4-5"
 USER_AGENT = "claude-usage-widget/1.0"
 
 # What the browser is sent to, and where a code or a refresh token is
@@ -390,29 +381,6 @@ def parse(document: dict[str, Any], plan: str) -> UsageSnapshot:
 		breakdown=tuple(breakdown),
 		extra_label="Extra usage" if enabled else "",
 		extra_percent=clamp_percent(extra.get("utilization")) if enabled else None,
-	)
-
-
-def start_session() -> None:
-	"""Send one short message, which starts the five hour session if none is running.
-
-	Returns:
-		None.
-
-	Raises:
-		CredentialsError: When there is no sign-in to send with.
-		UsageAuthError: When the sign-in was refused.
-		UsageRequestError: When the endpoint could not be reached.
-	"""
-	token = oauth.usable(OAUTH).access_token
-	post_json(
-		MESSAGES_URL,
-		{
-			"model": SESSION_START_MODEL,
-			"max_tokens": 1,
-			"messages": [{"role": "user", "content": MESSAGE_TEXT}],
-		},
-		{**_headers(token), "anthropic-version": API_VERSION},
 	)
 
 

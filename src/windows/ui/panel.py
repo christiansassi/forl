@@ -22,9 +22,8 @@ and the two are drawn on the same canvas rather than in two windows, so the
 panel keeps its position and its chrome across the change. The window takes
 whichever of the two views is taller, which is the reading once one has been
 taken, so opening the settings does not resize it. The settings are laid out as
-the Mac app's are: who is signed in to the service of the tab, what the app
-does on its own, which includes starting the service's five hour usage window,
-and which of its usages the tray icons show.
+the Mac app's are: who is signed in to the service of the tab, what applies to
+the whole widget, and which of its usages the tray icons show.
 
 Colors follow the light or dark mode chosen for applications in Windows, asked
 again each time the panel opens.
@@ -57,16 +56,6 @@ from ..providers import Provider
 from ..render.glyphs import render_back, render_gear
 from ..render.logo import render_logo
 from ..render.shapes import outlined_fill, render_checkbox, rounded_fill
-from ..schedule.session_start import (
-	ALL_WEEKDAYS,
-	MAX_GRACE_MINUTES,
-	MINUTE_STEP,
-	SessionStart,
-	format_time,
-	stepped_time,
-	switched,
-	toggled_weekday,
-)
 from ..render.theme import (
 	DARK_PALETTE,
 	SWITCH_OFF_OPACITY,
@@ -79,12 +68,11 @@ from ..render.theme import (
 	usage_hex,
 )
 from ..usage.snapshot import PRODUCT_KEY_PREFIX
-from ..validation import require_member, require_non_empty_str, require_number_in_range, require_type
+from ..validation import require_member, require_non_empty_str, require_type
 from .animation import Spring, Ticker
 from .capsule_bar import CapsuleBar
 from .core import LOADING_TEXT, ProviderView
 from .palette import current_palette
-from .slider import Slider
 from .switch import Switch
 from ..system import animations_enabled, apply_panel_chrome, work_area
 from .formatting import format_percent, format_subtitle
@@ -134,17 +122,6 @@ SIGN_IN_CODE_KEY = "sign_in_code"
 # A tab and a Show checkbox each carry what they stand for after the prefix.
 TAB_KEY_PREFIX = "tab:"
 SHOW_KEY_PREFIX = "show:"
-SESSION_START_KEY = "session_start"
-GRACE_KEY = "grace"
-# A day of the week carries its ISO number after the prefix, Monday 1 to Sunday 7.
-WEEKDAY_KEY_PREFIX = "weekday:"
-# Each step of the time carries how far it moves the hours and the minutes.
-TIME_STEPS = {
-	"time:hour_down": (-1, 0),
-	"time:hour_up": (1, 0),
-	"time:minute_down": (0, -MINUTE_STEP),
-	"time:minute_up": (0, MINUTE_STEP),
-}
 
 SETTINGS_TITLE = "Settings"
 GENERAL_TITLE = "General"
@@ -156,16 +133,6 @@ SIGN_IN_LABEL = "Sign in"
 SIGNED_IN_LABEL = "Signed in"
 NOT_SIGNED_IN_LABEL = "Not signed in"
 SIGN_IN_TO_LABEL = "Sign in to {label}"
-SESSION_START_LABEL = "Start usage window automatically"
-# The days of the week by their initials, Monday first, in ISO order.
-WEEKDAY_INITIALS = ("M", "T", "W", "T", "F", "S", "S")
-TIME_LABEL = "Time"
-GRACE_LABEL = "Late by up to"
-GRACE_VALUE = "{minutes} min"
-# A minus sign rather than a hyphen, which is too short to read as a button.
-STEP_DOWN_LABEL = "−"
-STEP_UP_LABEL = "+"
-TIME_SEPARATOR = ":"
 
 # The row of tabs across the top. The selected tab is tinted with its service's
 # accent, filled lightly and outlined a little more strongly, as on the Mac.
@@ -195,25 +162,6 @@ CHECKBOX_GAP = 8
 
 SWITCH_WIDTH = 40
 SWITCH_HEIGHT = 24
-
-# The time of the session start is two fields, each between a step down and a
-# step up, and how late it may be is a slider under its own line.
-TIME_STEP_GAP = 10
-TIME_FIELD_GAP = 12
-# The days it runs on are a row of seven circles across the settings, filled
-# with the service's color when chosen and outlined when not.
-WEEKDAY_SIZE = 28
-WEEKDAY_STROKE = 1
-SLIDER_HEIGHT = 18
-SLIDER_GAP = 4
-# Space between the capitals of one row of the session start and those of the
-# next, the same all the way down, as the Mac app spaces them evenly.
-SESSION_ROW_GAP = 14
-# The days are spaced from the knob of the slider above them, the lowest thing
-# that row draws, by a little less, which reads as the same space.
-DAYS_GAP = 11
-SLIDER_RING_OPACITY = 0.9
-SLIDER_TRACK_OPACITY = 0.25
 
 # A setting is the same shape as a usage row, a name on the left and one control
 # on the right, and is set on the same rhythm so the two views read alike.
@@ -301,7 +249,6 @@ class Panel:
 		on_sign_out: Callable[[str], None],
 		on_open_sign_in: Callable[[str], None],
 		on_toggle_metric: Callable[[str, str], None],
-		on_session_start_change: Callable[[str, SessionStart], None],
 		on_sign_in_code: Callable[[str, str], bool],
 	) -> None:
 		"""Create the panel as a hidden child of the application root window.
@@ -333,10 +280,6 @@ class Panel:
 			on_toggle_metric: Called with a service's key and a usage's key when
 				the user ticks or unticks that usage in the Show section. Callable
 				taking two str and returning None.
-			on_session_start_change: Called with a service's key and its new
-				session start schedule whenever the user changes it. The panel
-				shows the schedule and does not store it. Callable taking one str
-				and one SessionStart and returning None.
 			on_sign_in_code: Submit a pasted browser code for the selected service.
 				Callable taking the provider key and code and returning bool;
 				raises ValueError when the code cannot be submitted.
@@ -357,7 +300,6 @@ class Panel:
 			("on_sign_out", on_sign_out),
 			("on_open_sign_in", on_open_sign_in),
 			("on_toggle_metric", on_toggle_metric),
-			("on_session_start_change", on_session_start_change),
 			("on_sign_in_code", on_sign_in_code),
 		):
 			if not callable(callback):
@@ -371,7 +313,6 @@ class Panel:
 		self._on_sign_out = on_sign_out
 		self._on_open_sign_in = on_open_sign_in
 		self._on_toggle_metric = on_toggle_metric
-		self._on_session_start_change = on_session_start_change
 		self._on_sign_in_code = on_sign_in_code
 		self._selected_key = providers[0].key
 		self._current = describe(self._selected_key)
@@ -385,13 +326,6 @@ class Panel:
 		self._control_photos: list[ImageTk.PhotoImage] = []
 		self._hovered = ""
 		self._switch: Switch | None = None
-		self._session_switch: Switch | None = None
-		self._slider: Slider | None = None
-		self._grace_item = 0
-		# The value a drag of the slider has reached, None while none is under
-		# way. It is only stored when the button is let go, so a drag writes the
-		# preferences once rather than at every step.
-		self._dragged_grace: int | None = None
 		self._bars: list[tuple[CapsuleBar, Spring]] = []
 		self._springs: dict[str, Spring] = {}
 		self._content_height = 0
@@ -431,8 +365,6 @@ class Panel:
 		self._canvas.pack(fill="both", expand=True)
 		self._canvas.bind("<MouseWheel>", self._on_mouse_wheel)
 		self._canvas.bind("<Button-1>", self._on_click)
-		self._canvas.bind("<B1-Motion>", self._on_drag)
-		self._canvas.bind("<ButtonRelease-1>", self._on_release)
 		self._canvas.bind("<Motion>", self._on_motion)
 		self._canvas.bind("<Leave>", self._on_leave)
 		self._code_entry = tk.Entry(self._canvas, show="*", relief="flat", borderwidth=0, highlightthickness=0, exportselection=False)
@@ -1171,10 +1103,9 @@ class Panel:
 		"""Draw every setting, in the groups the Mac app puts them in.
 
 		Account comes first, with who is signed in to the service of the tab,
-		then General, with what the app does on its own: starting at login and
-		starting the service's five hour window. Show, last, lists which of its
-		usages the tray icons show, once there is a reading to say what those
-		are.
+		then General, with what applies to the whole widget. Show, last, lists
+		which of its usages the tray icons show, once there is a reading to say
+		what those are.
 
 		Args:
 			y: Vertical cursor in device pixels. float.
@@ -1186,9 +1117,6 @@ class Panel:
 		y = self._draw_account_row(y)
 		y = self._draw_section_label(GENERAL_TITLE, y + self._unit(SETTINGS_SECTION_GAP), SECTION_LABEL_GAP)
 		y = self._draw_startup_row(y)
-		# Beside the login switch rather than a group of its own: both are about
-		# what the app does on its own. It belongs to the service of the tab.
-		y = self._draw_session_start(y + self._unit(SETTINGS_ROW_GAP) / 2.0)
 		if self._current.groups:
 			y = self._draw_section_label(SHOW_TITLE, y + self._unit(SETTINGS_SECTION_GAP), SHOW_LABEL_GAP)
 			y = self._draw_show_rows(y)
@@ -1252,13 +1180,7 @@ class Panel:
 				y += height
 		return y
 
-	def _draw_settings_label(
-		self,
-		label: str,
-		y: float,
-		control_height: float,
-		min_height: float = SETTINGS_ROW_MIN_HEIGHT,
-	) -> tuple[float, float]:
+	def _draw_settings_label(self, label: str, y: float, control_height: float) -> tuple[float, float]:
 		"""Draw the name of one setting and return the line its control sits on.
 
 		The name and its control are centered on one line, the way a usage row
@@ -1272,9 +1194,6 @@ class Panel:
 			y: Vertical cursor in device pixels. float.
 			control_height: Height of the control going beside it, in device
 				pixels. float.
-			min_height: Smallest height the row may take, in layout units. A row
-				whose control is text as well takes 0, so the row is its line and
-				the space around it is the caller's. float, 0 or more.
 
 		Returns:
 			tuple[float, float]: The middle of the row and its height, both in
@@ -1282,13 +1201,12 @@ class Panel:
 		"""
 		require_non_empty_str(label, "label")
 		require_type(control_height, (int, float), "control_height")
-		require_number_in_range(min_height, 0.0, 1000.0, "min_height")
 
 		name = self._text((self._unit(PANEL_PAD), y), label, "row", self._palette.label_primary)
 		height = max(
 			self._canvas.bbox(name)[3] - y,
 			float(control_height),
-			self._unit(min_height),
+			self._unit(SETTINGS_ROW_MIN_HEIGHT),
 		)
 		middle = y + height / 2.0
 		self._canvas.move(name, 0, middle - self._text_middle(y, "row"))
@@ -1337,288 +1255,6 @@ class Panel:
 		"""
 		self._switch, y = self._draw_switch_row(STARTUP_LABEL, y, self._start_on_startup, STARTUP_KEY)
 		return y
-
-	def _draw_session_start(self, y: float) -> float:
-		"""Draw the session start switch and, while it is on, the time, the grace and the days.
-
-		Args:
-			y: Vertical cursor in device pixels. float.
-
-		Returns:
-			float: The vertical cursor after the section.
-		"""
-		pad = self._unit(PANEL_PAD)
-		right = self._unit(PANEL_WIDTH) - pad
-		schedule = self._current.session_start
-		self._session_switch, y = self._draw_switch_row(SESSION_START_LABEL, y, schedule.enabled, SESSION_START_KEY)
-		if not schedule.enabled:
-			return y
-
-		gap = self._unit(SESSION_ROW_GAP)
-		time_top = self._row_top_for_capitals(y + self._unit(SETTINGS_ROW_GAP) / 2.0)
-		self._draw_time_row(schedule, time_top)
-		baseline = time_top + self._ascent("row")
-		slider_bottom = self._draw_grace_row(schedule, self._row_top_for_capitals(baseline + gap))
-		return self._draw_weekday_row(schedule, slider_bottom + self._unit(DAYS_GAP))
-
-	def _row_top_for_capitals(self, capitals_top: float) -> float:
-		"""Return where a line of row text must be anchored for its capitals to start at a height.
-
-		Rows are spaced by what can be seen of them, the tops of the capitals,
-		rather than by the line box Tk reports, which has room above them for
-		accents and so leaves every gap looking larger than it was set.
-
-		Args:
-			capitals_top: Where the tops of the capitals should sit, in device
-				pixels. float.
-
-		Returns:
-			float: The top to anchor the text at, in device pixels.
-		"""
-		require_number_in_range(capitals_top, -1e9, 1e9, "capitals_top")
-		return capitals_top - (self._ascent("row") - self._font_pixels("row") * CAP_HEIGHT_RATIO)
-
-	def _draw_weekday_row(self, schedule: SessionStart, y: float) -> float:
-		"""Draw the days of the week the session is started on, one circle each.
-
-		A chosen day is filled with the color of the service, and a day that is
-		not is an outline that takes that color, ring and initial, under the
-		pointer, as the other controls of the settings do. Both of its looks are
-		rendered now and swapped later, since the pointer moving is not a reason
-		to redraw the panel.
-
-		Args:
-			schedule: The schedule being shown. SessionStart.
-			y: Vertical cursor in device pixels. float.
-
-		Returns:
-			float: The vertical cursor at the bottom of the row.
-		"""
-		require_type(schedule, SessionStart, "schedule")
-		pad = self._unit(PANEL_PAD)
-		right = self._unit(PANEL_WIDTH) - pad
-		size = max(1, int(round(self._unit(WEEKDAY_SIZE))))
-		gap = (right - pad - size * len(ALL_WEEKDAYS)) / (len(ALL_WEEKDAYS) - 1)
-		stroke = max(1.0, self._unit(WEEKDAY_STROKE))
-		for index, (weekday, initial) in enumerate(zip(ALL_WEEKDAYS, WEEKDAY_INITIALS)):
-			left = pad + index * (size + gap)
-			chosen = weekday in schedule.weekdays
-			key = f"{WEEKDAY_KEY_PREFIX}{weekday}"
-			if chosen:
-				circle = ImageTk.PhotoImage(outlined_fill(size, size, self._accent, self._accent, size / 2.0, stroke))
-				self._control_photos.append(circle)
-				self._canvas.create_image(left, y, image=circle, anchor="nw", tags="content")
-				self._text((left + size / 2.0, y + size / 2.0), initial, "caption", on_accent(self._accent), anchor="center")
-			else:
-				surface = self._palette.surface
-				ring = ImageTk.PhotoImage(outlined_fill(size, size, surface, self._palette.label_tertiary, size / 2.0, stroke))
-				lit_ring = ImageTk.PhotoImage(outlined_fill(size, size, surface, self._accent, size / 2.0, stroke))
-				# Kept on the panel because Tk holds only a weak reference to the
-				# image behind a canvas item, and a collected photo leaves a gap.
-				self._control_photos.extend((ring, lit_ring))
-				circle_item = self._canvas.create_image(left, y, image=ring, anchor="nw", tags="content")
-				resting = self._palette.label_secondary
-				text_item = self._text((left + size / 2.0, y + size / 2.0), initial, "caption", resting, anchor="center")
-
-				def light(on: bool, circle_item: int = circle_item, text_item: int = text_item,
-						ring: ImageTk.PhotoImage = ring, lit_ring: ImageTk.PhotoImage = lit_ring, resting: str = resting) -> None:
-					"""Draw one unchosen day in the color of the service, or back as it rests.
-
-					Args:
-						on: Whether the pointer is over the day. bool.
-						circle_item: Canvas item id of the ring. int.
-						text_item: Canvas item id of the initial. int.
-						ring: The ring as it rests. ImageTk.PhotoImage.
-						lit_ring: The ring in the color of the service. ImageTk.PhotoImage.
-						resting: Color of the initial as it rests. str.
-
-					Returns:
-						None.
-					"""
-					self._canvas.itemconfigure(circle_item, image=lit_ring if on else ring)
-					self._canvas.itemconfigure(text_item, fill=self._accent if on else resting)
-
-				self._lit[key] = light
-			self._add_hit((left, y, left + size, y + size), key)
-		return y + size
-
-	def _draw_time_row(self, schedule: SessionStart, y: float) -> float:
-		"""Draw the time the session is started at, with a step down and up on each field.
-
-		Laid out from the right hand edge, so the minutes line up with the end
-		of every other control in the settings.
-
-		Args:
-			schedule: The schedule being shown. SessionStart.
-			y: Vertical cursor in device pixels. float.
-
-		Returns:
-			float: The vertical cursor at the bottom of the row.
-		"""
-		require_type(schedule, SessionStart, "schedule")
-		middle, height = self._draw_settings_label(TIME_LABEL, y, 0.0, min_height=0.0)
-		hour, minute = format_time(schedule.minute_of_day)
-		step_gap = self._unit(TIME_STEP_GAP)
-		field_gap = self._unit(TIME_FIELD_GAP)
-
-		x = self._unit(PANEL_WIDTH) - self._unit(PANEL_PAD)
-		x = self._draw_step(STEP_UP_LABEL, x, middle, "time:minute_up") - step_gap
-		x = self._field_text(minute, x, middle) - step_gap
-		x = self._draw_step(STEP_DOWN_LABEL, x, middle, "time:minute_down") - field_gap
-		x = self._field_text(TIME_SEPARATOR, x, middle) - field_gap
-		x = self._draw_step(STEP_UP_LABEL, x, middle, "time:hour_up") - step_gap
-		x = self._field_text(hour, x, middle) - step_gap
-		self._draw_step(STEP_DOWN_LABEL, x, middle, "time:hour_down")
-		return y + height
-
-	def _draw_step(self, text: str, right: float, middle: float, key: str) -> float:
-		"""Draw a step of the time, and return where it begins.
-
-		Drawn in the secondary label color, as the gear and the chevron are, and
-		in the color of the service while the pointer is over it or pressing it.
-
-		Args:
-			text: The sign, STEP_DOWN_LABEL or STEP_UP_LABEL. str, non-empty.
-			right: Where its right hand edge sits, in device pixels. float.
-			middle: The line it is centered on, in device pixels. float.
-			key: What to report when it is clicked. str, non-empty.
-
-		Returns:
-			float: The left edge of the sign in device pixels.
-		"""
-		require_non_empty_str(text, "text")
-		require_non_empty_str(key, "key")
-		resting = self._palette.label_secondary
-		lit = self._accent
-		item = self._text((right, middle), text, "row", resting, anchor="e")
-		self._lit[key] = lambda on: self._canvas.itemconfigure(item, fill=lit if on else resting)
-		return self._add_text_hit(item, key)[0]
-
-	def _field_text(self, text: str, right: float, middle: float) -> float:
-		"""Draw one field of the time, and return where it begins.
-
-		Args:
-			text: The field, such as "08". str, non-empty.
-			right: Where its right hand edge sits, in device pixels. float.
-			middle: The line it is centered on, in device pixels. float.
-
-		Returns:
-			float: The left edge of the field in device pixels.
-		"""
-		require_non_empty_str(text, "text")
-		item = self._text((right, middle), text, "row_value", self._palette.label_primary, anchor="e")
-		return float(self._canvas.bbox(item)[0])
-
-	def _draw_grace_row(self, schedule: SessionStart, y: float) -> float:
-		"""Draw how late the session may still be started, and the slider that sets it.
-
-		Args:
-			schedule: The schedule being shown. SessionStart.
-			y: Vertical cursor in device pixels. float.
-
-		Returns:
-			float: The vertical cursor at the bottom of the slider.
-		"""
-		require_type(schedule, SessionStart, "schedule")
-		pad = self._unit(PANEL_PAD)
-		right = self._unit(PANEL_WIDTH) - pad
-		grace = self._dragged_grace if self._dragged_grace is not None else schedule.grace_minutes
-		middle, height = self._draw_settings_label(GRACE_LABEL, y, 0.0, min_height=0.0)
-		self._grace_item = self._text(
-			(right, middle),
-			GRACE_VALUE.format(minutes=grace),
-			"row_value",
-			self._palette.label_secondary,
-			anchor="e",
-		)
-
-		top = y + height + self._unit(SLIDER_GAP)
-		size = self._unit(SLIDER_HEIGHT)
-		self._slider = Slider(
-			self._canvas,
-			(pad, top, right, top + size),
-			MAX_GRACE_MINUTES,
-			MINUTE_STEP,
-			(
-				mix_hex(self._palette.surface, self._palette.label_primary, SLIDER_TRACK_OPACITY),
-				self._accent,
-				mix_hex(self._palette.surface, self._palette.label_primary, 1.0 - SLIDER_RING_OPACITY),
-			),
-			"content",
-		)
-		self._slider.set_value(grace)
-		self._add_hit(self._slider.box, GRACE_KEY)
-		return top + size
-
-	def _change_session_start(self, schedule: SessionStart) -> None:
-		"""Report a new session start schedule for the service of the tab.
-
-		Args:
-			schedule: The schedule as the user has now set it. SessionStart.
-
-		Returns:
-			None. The owner stores it and reports the change, which redraws
-			the panel.
-		"""
-		require_type(schedule, SessionStart, "schedule")
-		self._on_session_start_change(self._selected_key, schedule)
-
-	def _toggle_session_start(self) -> None:
-		"""Turn the session start switch over and report the new schedule.
-
-		Returns:
-			None.
-		"""
-		schedule = self._current.session_start
-		if self._session_switch is not None:
-			self._session_switch.set_fraction(0.0 if schedule.enabled else 1.0)
-		self._change_session_start(switched(schedule, not schedule.enabled, datetime.now()))
-
-	def _drag_grace(self, x: float) -> None:
-		"""Move the grace slider to the value under the pointer.
-
-		Args:
-			x: Position of the pointer across the canvas in device pixels. float.
-
-		Returns:
-			None.
-		"""
-		if self._slider is None:
-			return
-		self._dragged_grace = self._slider.value_at(x)
-		self._slider.set_value(self._dragged_grace)
-		if self._grace_item:
-			self._canvas.itemconfigure(self._grace_item, text=GRACE_VALUE.format(minutes=self._dragged_grace))
-
-	def _on_drag(self, event: tk.Event) -> None:
-		"""Follow the pointer while the grace slider is being dragged.
-
-		Args:
-			event: The motion event with the button held. tkinter.Event.
-
-		Returns:
-			None.
-		"""
-		if self._dragged_grace is not None:
-			self._drag_grace(event.x)
-
-	def _on_release(self, _event: tk.Event) -> None:
-		"""Store the value a drag of the grace slider ended on.
-
-		Args:
-			_event: The release event, which carries nothing needed here.
-				tkinter.Event.
-
-		Returns:
-			None.
-		"""
-		if self._dragged_grace is None:
-			return
-		grace = self._dragged_grace
-		self._dragged_grace = None
-		schedule = self._current.session_start
-		if grace != schedule.grace_minutes:
-			self._change_session_start(replace(schedule, grace_minutes=grace))
 
 	def _draw_account_row(self, y: float) -> float:
 		"""Draw the service of the tab, who is signed in to it, and the word that changes that.
@@ -1927,9 +1563,6 @@ class Panel:
 		# already rendered would be wrong for.
 		self._skeleton.clear()
 		self._skeleton_photos.clear()
-		self._session_switch = None
-		self._slider = None
-		self._grace_item = 0
 		self._scroll_offset = 0.0
 
 		self._current = self._describe(self._selected_key)
@@ -1990,16 +1623,6 @@ class Panel:
 			self._set_view(USAGE_VIEW)
 		elif key == STARTUP_KEY:
 			self._toggle_startup()
-		elif key == SESSION_START_KEY:
-			self._toggle_session_start()
-		elif key in TIME_STEPS:
-			hours, minutes = TIME_STEPS[key]
-			self._change_session_start(stepped_time(self._current.session_start, hours, minutes, datetime.now()))
-		elif key.startswith(WEEKDAY_KEY_PREFIX):
-			weekday = int(key[len(WEEKDAY_KEY_PREFIX):])
-			self._change_session_start(toggled_weekday(self._current.session_start, weekday))
-		elif key == GRACE_KEY:
-			self._drag_grace(event.x)
 		elif key in (SIGN_IN_KEY, ACCOUNT_KEY):
 			# The panel is left open. A browser that opens takes the focus and
 			# dismisses it anyway, and one that does not leaves the panel in

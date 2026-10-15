@@ -66,31 +66,6 @@ enum HTTP {
 		return try await send(request)
 	}
 
-	/// Send a JSON POST and wait for it to be accepted.
-	///
-	/// What comes back is not read. The one request this is for is the message
-	/// that starts a session, whose answer is a model's reply nobody looks at,
-	/// and on one of the two services a stream rather than a document.
-	///
-	/// - Parameters:
-	///   - url: The endpoint to post to.
-	///   - body: The JSON object to send.
-	///   - headers: Request headers, including the authorization header.
-	/// - Returns: Nothing, once the endpoint has accepted the request.
-	/// - Throws: `UsageError.authentication` when the endpoint rejects the
-	///   token, `UsageError.request` when it cannot be reached or answers with
-	///   anything else.
-	static func postJSON(url: URL, body: [String: Any], headers: [String: String]) async throws {
-		var request = URLRequest(url: url, timeoutInterval: requestTimeout)
-		request.httpMethod = "POST"
-		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-		for (name, value) in headers {
-			request.setValue(value, forHTTPHeaderField: name)
-		}
-		request.httpBody = try JSONSerialization.data(withJSONObject: body)
-		_ = try await perform(request)
-	}
-
 	/// Return form fields as the body of a form encoded request.
 	///
 	/// - Parameter fields: The fields to encode.
