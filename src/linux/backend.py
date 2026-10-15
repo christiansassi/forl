@@ -420,6 +420,40 @@ def set_startup_entry(enabled: bool) -> bool:
 	return True
 
 
+def _install_tree(source: Path, target: Path) -> bool:
+	"""Copy a directory that ships with the widget to where a desktop reads it.
+
+	Only the files that differ are written, so a copy that already matches is
+	left alone and the desktop sees no change to pick up.
+
+	Args:
+		source: The directory as it ships, beside this module or inside the
+			built executable. Path.
+		target: Where the desktop looks for it, created when missing. Path.
+
+	Returns:
+		bool: True when the target now matches the source. False when the
+		source is missing or a file could not be copied.
+	"""
+	require_type(source, Path, "source")
+	require_type(target, Path, "target")
+	if not source.is_dir():
+		return False
+	try:
+		for path in source.rglob("*"):
+			if not path.is_file():
+				continue
+			destination = target / path.relative_to(source)
+			content = path.read_bytes()
+			if destination.is_file() and destination.read_bytes() == content:
+				continue
+			destination.parent.mkdir(parents=True, exist_ok=True)
+			destination.write_bytes(content)
+	except OSError:
+		return False
+	return True
+
+
 def install_plasma_widget() -> bool:
 	"""Install the KDE Plasma widget for this user, or bring it up to date.
 
@@ -432,22 +466,10 @@ def install_plasma_widget() -> bool:
 		bool: True when the widget is installed and current. False on a desktop
 		that is not Plasma, or when it could not be copied.
 	"""
-	if "KDE" not in _desktops() or not PLASMA_WIDGET_SOURCE.is_dir():
+	if "KDE" not in _desktops():
 		return False
 	target = _xdg_dir("XDG_DATA_HOME", ".local", "share").joinpath(*PLASMA_WIDGETS_DIR) / PLASMA_WIDGET_ID
-	try:
-		for source in PLASMA_WIDGET_SOURCE.rglob("*"):
-			if not source.is_file():
-				continue
-			destination = target / source.relative_to(PLASMA_WIDGET_SOURCE)
-			content = source.read_bytes()
-			if destination.is_file() and destination.read_bytes() == content:
-				continue
-			destination.parent.mkdir(parents=True, exist_ok=True)
-			destination.write_bytes(content)
-	except OSError:
-		return False
-	return True
+	return _install_tree(PLASMA_WIDGET_SOURCE, target)
 
 
 def status_dir() -> Path | None:
