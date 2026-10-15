@@ -64,13 +64,20 @@ def _service_document(view: ProviderView) -> dict[str, Any]:
 	Args:
 		view: The state of the service. ProviderView.
 
+	Everything the panel draws is here, so a widget can lay out the same page:
+	the line under the reading and when the next one is due, the model a
+	separate limit covers, which usages are products, and any extra usage.
+
 	Returns:
-		dict: The service's name, plan, sign-in state and every usage with its
-		share, its reset time and where the user chose to show it.
+		dict: The service's name, mark, plan, sign-in state, the line under the
+		reading, and every usage with its share, its reset time and where the
+		user chose to show it.
 	"""
 	snapshot = view.snapshot
 	usages = []
+	extra = None
 	if snapshot is not None:
+		scopes = {window.key: window.scope_name for window in snapshot.windows()}
 		for metric in snapshot.metrics():
 			usages.append(
 				{
@@ -78,17 +85,26 @@ def _service_document(view: ProviderView) -> dict[str, Any]:
 					"label": metric.label,
 					"percent": round(metric.percent, 1),
 					"resets_at": metric.resets_at.isoformat() if metric.resets_at else None,
+					"group": metric.group,
+					"scope": scopes.get(metric.key, ""),
 					"in_panel": metric.key in view.in_panel,
 					"in_tray": metric.key in view.displayed,
 				}
 			)
+		if snapshot.extra_label and snapshot.extra_percent is not None:
+			extra = {"label": snapshot.extra_label, "percent": round(snapshot.extra_percent, 1)}
 	return {
 		"key": view.provider.key,
 		"label": view.provider.label,
 		"accent": view.provider.accent,
+		"logo": view.provider.logo_file,
 		"plan": snapshot.plan if snapshot is not None else "",
 		"signed_in": view.signed_in,
+		"status": view.status,
+		"refreshing": view.refreshing,
+		"next_update_at": view.next_update_at.isoformat() if view.next_update_at else None,
 		"usages": usages,
+		"extra": extra,
 	}
 
 
@@ -132,14 +148,42 @@ def _write_text(path: Path, text: str) -> None:
 	os.replace(temporary, path)
 
 
-def write_status(directory: Path, views: tuple[ProviderView, ...], tray: bool) -> bool:
+def status_document(views: tuple[ProviderView, ...], tray: bool, show_plan: bool) -> dict[str, Any]:
+	"""Return everything widgets are told about every service, as one document.
+
+	This is what status.json holds, and what the GNOME Shell extension is sent
+	over the session bus.
+
+	Args:
+		views: The state of every service, in tab order. tuple of ProviderView.
+		tray: Whether the widget has icons in a tray, so a widget that would
+			show the same readings in the same bar can step aside. bool.
+		show_plan: Whether the panel names the plan beside the service, which a
+			widget drawn like the panel follows. bool.
+
+	Returns:
+		dict: When it was made, the two flags, and one entry per service.
+	"""
+	require_type(views, tuple, "views")
+	require_type(tray, bool, "tray")
+	require_type(show_plan, bool, "show_plan")
+	for view in views:
+		require_type(view, ProviderView, "views")
+	return {
+		"updated": datetime.now(timezone.utc).isoformat(),
+		"tray": tray,
+		"show_plan": show_plan,
+		"services": [_service_document(view) for view in views],
+	}
+
+
+def write_status(directory: Path, views: tuple[ProviderView, ...], document: dict[str, Any]) -> bool:
 	"""Write every service's readings where status bars and widgets read them.
 
 	Args:
 		directory: Where to write, created when missing. Path.
 		views: The state of every service, in tab order. tuple of ProviderView.
-		tray: Whether the widget has icons in a tray, so a widget that would
-			show the same readings in the same bar can step aside. bool.
+		document: What status_document returned for those views. dict.
 
 	Returns:
 		bool: True when every file was written. False when the directory could
@@ -147,19 +191,12 @@ def write_status(directory: Path, views: tuple[ProviderView, ...], tray: bool) -
 	"""
 	require_type(directory, Path, "directory")
 	require_type(views, tuple, "views")
-	require_type(tray, bool, "tray")
+	require_type(document, dict, "document")
 	for view in views:
 		require_type(view, ProviderView, "views")
 	try:
 		directory.mkdir(parents=True, exist_ok=True)
-		write_json(
-			directory / STATUS_FILE,
-			{
-				"updated": datetime.now(timezone.utc).isoformat(),
-				"tray": tray,
-				"services": [_service_document(view) for view in views],
-			},
-		)
+		write_json(directory / STATUS_FILE, document)
 		for view in views:
 			text, tooltip, peak = _bar_line(view)
 			key = view.provider.key

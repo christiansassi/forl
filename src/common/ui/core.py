@@ -23,6 +23,7 @@ through the settings.
 from __future__ import annotations
 
 import threading
+from datetime import datetime, timedelta
 import webbrowser
 from dataclasses import replace
 from typing import Callable, NamedTuple
@@ -113,6 +114,9 @@ class ProviderView(NamedTuple):
 		in_panel: Keys of the usages the panel shows, which is what the Panel
 			section checks. frozenset of str.
 		accepting_code: Whether the current sign-in accepts a pasted code. bool.
+		next_update_at: When the next reading is due, or None before the first
+			one. It stays in the past while readings fail, which is what the
+			countdown shows as zero. datetime in UTC or None.
 	"""
 
 	provider: Provider
@@ -128,6 +132,7 @@ class ProviderView(NamedTuple):
 	displayed: frozenset[str]
 	in_panel: frozenset[str]
 	accepting_code: bool = False
+	next_update_at: datetime | None = None
 
 
 def quit_rows() -> tuple[MenuRow, ...]:
@@ -336,6 +341,9 @@ class WidgetCore:
 			groups=self.metric_groups(),
 			displayed=frozenset(self.displayed_keys()),
 			in_panel=frozenset(self._in_panel),
+			next_update_at=(
+				self._snapshot.fetched_at + timedelta(seconds=self._poll_seconds) if self._snapshot is not None else None
+			),
 		)
 
 	def displayed_keys(self) -> tuple[str, ...]:

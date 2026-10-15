@@ -47,7 +47,7 @@ from ..validation import require_member, require_non_empty_str, require_positive
 from .core import DEFAULT_POLL_SECONDS, QUIT_KEY, MetricReading, ProviderView, WidgetCore, quit_rows
 from .menu import TrayMenu
 from .panel import USAGE_VIEW, Panel
-from .status import write_status
+from .status import status_document, write_status
 
 DRAIN_INTERVAL_MS = 120
 
@@ -129,7 +129,7 @@ class WidgetApp:
 			providers,
 			describe=self._describe,
 			on_startup_change=self._set_startup,
-			on_show_plan_change=save_show_plan,
+			on_show_plan_change=self._set_show_plan,
 			on_sign_in=lambda key: self._core(key).sign_in_now(),
 			on_sign_out=lambda key: self._core(key).sign_out(),
 			on_open_sign_in=lambda key: self._core(key).open_sign_in_link(),
@@ -138,7 +138,8 @@ class WidgetApp:
 			on_toggle_panel_metric=lambda key, metric: self._core(key).toggle_panel_metric(metric),
 		)
 		self._panel.set_startup(self._start_on_startup)
-		self._panel.set_show_plan(load_show_plan())
+		self._show_plan = load_show_plan()
+		self._panel.set_show_plan(self._show_plan)
 		self._menu = TrayMenu(self._root, on_choose=self._choose)
 		self._status_dir = status_dir()
 		self._has_tray = tray_available()
@@ -268,6 +269,23 @@ class WidgetApp:
 		self._start_on_startup = enabled
 		save_start_on_startup(enabled)
 
+	def _set_show_plan(self, enabled: bool) -> None:
+		"""Store whether the panel names the plan, and tell the status files.
+
+		Widgets drawn like the panel read the choice from status.json, so it is
+		rewritten at once rather than at the next reading.
+
+		Args:
+			enabled: What the user set the switch to. bool.
+
+		Returns:
+			None.
+		"""
+		require_type(enabled, bool, "enabled")
+		self._show_plan = enabled
+		save_show_plan(enabled)
+		self._write_status()
+
 	def _open_menu(self, x: int, y: int) -> None:
 		"""Open the menu of a tray icon at the pointer.
 
@@ -297,6 +315,16 @@ class WidgetApp:
 		if key == QUIT_KEY:
 			self.shutdown()
 
+	def _write_status(self) -> None:
+		"""Write the readings where status bars and desktop widgets read them.
+
+		Returns:
+			None. Does nothing on a platform that names no directory for them.
+		"""
+		if self._status_dir is not None:
+			views = tuple(self._describe(provider.key) for provider in self._providers)
+			write_status(self._status_dir, views, status_document(views, self._has_tray, self._show_plan))
+
 	def _refresh_surfaces(self) -> None:
 		"""Redraw every tray icon, the panel when it is open, and the status files.
 
@@ -304,12 +332,7 @@ class WidgetApp:
 			None.
 		"""
 		self._panel.refresh()
-		if self._status_dir is not None:
-			write_status(
-				self._status_dir,
-				tuple(self._describe(provider.key) for provider in self._providers),
-				self._has_tray,
-			)
+		self._write_status()
 		if not self._has_tray:
 			return
 		showing = False
