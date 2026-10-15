@@ -38,6 +38,7 @@ GENERAL_SECTION = "general"
 
 STARTUP_FIELD = "start_on_startup"
 VIEWS_FIELD = "views"
+PANEL_FIELD = "panel"
 MENU_BAR_FIELD = "menu_bar"
 DOCK_FIELD = "dock"
 
@@ -62,11 +63,15 @@ class Preferences:
 			back to its own default. tuple of str, or None.
 		menu_bar: Kept for a preferences file an older widget wrote. bool.
 		dock: Kept for a preferences file an older widget wrote. bool.
+		panel: Keys of the usages the panel shows. Empty means the user chose to
+			show none, and None that nothing was ever chosen, as for views.
+			tuple of str, or None.
 	"""
 
 	views: tuple[str, ...] | None
 	menu_bar: bool = DEFAULT_MENU_BAR
 	dock: bool = DEFAULT_DOCK
+	panel: tuple[str, ...] | None = None
 
 
 DEFAULTS = Preferences(views=None)
@@ -142,6 +147,25 @@ def _flag(section: dict[str, Any], field: str, fallback: bool) -> bool:
 	return value if isinstance(value, bool) else fallback
 
 
+def _keys(section: dict[str, Any], field: str) -> tuple[str, ...] | None:
+	"""Return one stored list of usage keys, or None when none was stored.
+
+	Args:
+		section: The stored section of one provider. dict.
+		field: Name of the field to read. str, non-empty.
+
+	Returns:
+		tuple of str, or None: The keys that are non-empty strings, in their
+		stored order, or None when the field is missing or not a list.
+	"""
+	require_type(section, dict, "section")
+	require_non_empty_str(field, "field")
+	value = section.get(field)
+	if not isinstance(value, list):
+		return None
+	return tuple(key for key in value if isinstance(key, str) and key)
+
+
 def load(provider_key: str) -> Preferences:
 	"""Return the stored preferences of one provider.
 
@@ -158,11 +182,11 @@ def load(provider_key: str) -> Preferences:
 	require_non_empty_str(provider_key, "provider_key")
 
 	section = _section(provider_key)
-	views = section.get(VIEWS_FIELD)
 	return Preferences(
-		views=tuple(view for view in views if isinstance(view, str) and view) if isinstance(views, list) else None,
+		views=_keys(section, VIEWS_FIELD),
 		menu_bar=_flag(section, MENU_BAR_FIELD, DEFAULTS.menu_bar),
 		dock=_flag(section, DOCK_FIELD, DEFAULTS.dock),
+		panel=_keys(section, PANEL_FIELD),
 	)
 
 
@@ -185,6 +209,8 @@ def save(provider_key: str, preferences: Preferences) -> bool:
 	}
 	if preferences.views is not None:
 		section[VIEWS_FIELD] = list(preferences.views)
+	if preferences.panel is not None:
+		section[PANEL_FIELD] = list(preferences.panel)
 	return _write_section(provider_key, section)
 
 

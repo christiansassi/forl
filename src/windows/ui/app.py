@@ -126,6 +126,7 @@ class WidgetApp:
 			on_open_sign_in=lambda key: self._core(key).open_sign_in_link(),
 			on_sign_in_code=lambda key, code: self._core(key).submit_sign_in_code(code),
 			on_toggle_metric=lambda key, metric: self._core(key).toggle_metric(metric),
+			on_toggle_panel_metric=lambda key, metric: self._core(key).toggle_panel_metric(metric),
 		)
 		self._panel.set_startup(self._start_on_startup)
 		self._menu = TrayMenu(self._root, on_choose=self._choose)

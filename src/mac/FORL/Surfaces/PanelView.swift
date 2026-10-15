@@ -130,7 +130,7 @@ struct PanelView: View {
 		.padding(.bottom, 14)
 
 		if let state = store.state(for: providerKey), state.signedIn {
-			ProviderSection(state: state, now: tick)
+			ProviderSection(state: state, shown: Set(store.preferences.panelShown(for: providerKey)), now: tick)
 		} else {
 			Text("Sign in to a service in the settings to see its usage here.")
 				.font(.system(size: 13))
@@ -210,6 +210,8 @@ private struct ProviderTabs: View {
 private struct ProviderSection: View {
 	/// The provider to draw.
 	var state: ProviderState
+	/// Keys of the metrics the user chose to see in the panel.
+	var shown: Set<String>
 	/// The moment the countdown is measured against.
 	var now: Date
 
@@ -224,14 +226,14 @@ private struct ProviderSection: View {
 				SkeletonRow()
 			}
 			if let snapshot = state.snapshot {
-				ForEach(Array(snapshot.metrics.filter { $0.group == .limit }.enumerated()), id: \.element.id) { index, metric in
+				ForEach(Array(snapshot.metrics.filter { $0.group == .limit && shown.contains($0.key) }.enumerated()), id: \.element.id) { index, metric in
 					if index > 0 {
 						Spacer().frame(height: 14)
 					}
 					MetricRow(metric: metric, now: now)
 				}
 
-				let products = snapshot.metrics.filter { $0.group == .product }
+				let products = snapshot.metrics.filter { $0.group == .product && shown.contains($0.key) }
 				if !products.isEmpty {
 					Spacer().frame(height: 22)
 					Text("This week's usage by product")

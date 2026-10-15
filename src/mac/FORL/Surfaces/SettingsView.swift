@@ -83,12 +83,33 @@ struct SettingsView: View {
 			}
 
 			if let state = store.state(for: selectedProviderKey), let snapshot = state.snapshot {
+				let key = state.provider.key
+				Spacer().frame(height: 22)
+				Text("Panel")
+					.font(.system(size: 11, weight: .semibold))
+					.foregroundStyle(.secondary)
+					.padding(.bottom, 10)
+				MetricChecklist(
+					snapshot: snapshot,
+					accent: state.provider.accent,
+					chosen: store.preferences.panelShown(for: key),
+					onToggle: { store.preferences.togglePanel($0, for: key) }
+				)
+
 				Spacer().frame(height: 22)
 				Text("Show")
 					.font(.system(size: 11, weight: .semibold))
 					.foregroundStyle(.secondary)
 					.padding(.bottom, 10)
-				ShowSection(state: state, snapshot: snapshot, store: store)
+				MetricChecklist(
+					snapshot: snapshot,
+					accent: state.provider.accent,
+					chosen: store.preferences.selected(for: key),
+					onToggle: {
+						store.preferences.toggle($0, for: key)
+						store.publish()
+					}
+				)
 			}
 		}
 		.toggleStyle(.switch)
@@ -156,27 +177,29 @@ private struct AccountRow: View {
 	}
 }
 
-/// Which of one service's usages are shown in the menu bar.
-private struct ShowSection: View {
-	/// The provider to draw.
-	var state: ProviderState
+/// One checkbox per usage a reading reports, ticked for the ones chosen.
+///
+/// The Panel section, which picks the rows the panel shows, and the Show
+/// section, which picks the menu bar items, are both this list.
+private struct MetricChecklist: View {
 	/// The reading that names the usages there are.
 	var snapshot: UsageSnapshot
-	/// Everything the app is showing, for the selection.
-	@Bindable var store: UsageStore
+	/// The color of a ticked box.
+	var accent: Color
+	/// Keys of the usages ticked.
+	var chosen: [String]
+	/// Called with a usage's key when its box is clicked.
+	var onToggle: (String) -> Void
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 0) {
 			ForEach(snapshot.metrics) { metric in
 				Toggle(metric.label, isOn: Binding(
-					get: { store.preferences.selected(for: state.provider.key).contains(metric.key) },
-					set: { _ in
-						store.preferences.toggle(metric.key, for: state.provider.key)
-						store.publish()
-					}
+					get: { chosen.contains(metric.key) },
+					set: { _ in onToggle(metric.key) }
 				))
 				.toggleStyle(.checkbox)
-				.tint(state.provider.accent)
+				.tint(accent)
 				.font(.system(size: 12))
 				.frame(minHeight: 20, alignment: .leading)
 				.padding(.vertical, 1)

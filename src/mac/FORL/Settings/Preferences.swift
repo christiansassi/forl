@@ -25,11 +25,16 @@ final class Preferences {
 	var selection: [String: [String]] {
 		didSet { defaults.set(selection, forKey: Key.selection) }
 	}
+	/// Which metrics the user chose to see in the panel, keyed by provider.
+	var panelSelection: [String: [String]] {
+		didSet { defaults.set(panelSelection, forKey: Key.panelSelection) }
+	}
 
 	/// The names the values are stored under.
 	private enum Key {
 		static let startAtLogin = "startAtLogin"
 		static let selection = "selection"
+		static let panelSelection = "panelSelection"
 	}
 
 	/// Read the stored preferences, falling back to the defaults.
@@ -41,6 +46,7 @@ final class Preferences {
 		self.defaults = defaults
 		startAtLogin = defaults.object(forKey: Key.startAtLogin) as? Bool ?? false
 		selection = defaults.object(forKey: Key.selection) as? [String: [String]] ?? [:]
+		panelSelection = defaults.object(forKey: Key.panelSelection) as? [String: [String]] ?? [:]
 	}
 
 	/// Return the metric keys the user chose for one provider.
@@ -68,13 +74,48 @@ final class Preferences {
 	///   - providerKey: Key of the provider it belongs to.
 	/// - Returns: Nothing.
 	func toggle(_ key: String, for providerKey: String) {
-		var chosen = selected(for: providerKey)
-		if let index = chosen.firstIndex(of: key) {
-			chosen.remove(at: index)
+		selection[providerKey] = Self.toggled(key, in: selected(for: providerKey))
+	}
+
+	/// Return the metric keys one provider's panel shows.
+	///
+	/// A provider that has never been configured shows its session and weekly
+	/// windows, which are the two every plan has; the rest are a tick away. As
+	/// with the menu bar, a panel whose every reading has been unticked shows
+	/// none rather than falling back to the default.
+	///
+	/// - Parameter providerKey: Key of the provider, such as "claude".
+	/// - Returns: The chosen keys, or the session and weekly windows for a
+	///   provider with no stored choice at all.
+	func panelShown(for providerKey: String) -> [String] {
+		panelSelection[providerKey] ?? [sessionKey, weeklyKey]
+	}
+
+	/// Add a metric to one provider's panel, or take it away.
+	///
+	/// - Parameters:
+	///   - key: Key of the metric the user clicked.
+	///   - providerKey: Key of the provider it belongs to.
+	/// - Returns: Nothing.
+	func togglePanel(_ key: String, for providerKey: String) {
+		panelSelection[providerKey] = Self.toggled(key, in: panelShown(for: providerKey))
+	}
+
+	/// Return a list of metric keys with one added at the end, or taken out.
+	///
+	/// - Parameters:
+	///   - key: The metric to add or take out.
+	///   - chosen: The keys as they stand.
+	/// - Returns: The keys without `key` when it was there, with it at the end
+	///   when it was not.
+	private static func toggled(_ key: String, in chosen: [String]) -> [String] {
+		var next = chosen
+		if let index = next.firstIndex(of: key) {
+			next.remove(at: index)
 		} else {
-			chosen.append(key)
+			next.append(key)
 		}
-		selection[providerKey] = chosen
+		return next
 	}
 }
 

@@ -122,10 +122,12 @@ SIGN_IN_CODE_KEY = "sign_in_code"
 # A tab and a Show checkbox each carry what they stand for after the prefix.
 TAB_KEY_PREFIX = "tab:"
 SHOW_KEY_PREFIX = "show:"
+PANEL_KEY_PREFIX = "panel:"
 
 SETTINGS_TITLE = "Settings"
 GENERAL_TITLE = "General"
 ACCOUNT_TITLE = "Account"
+PANEL_TITLE = "Panel"
 SHOW_TITLE = "Show"
 STARTUP_LABEL = "Start at login"
 SIGN_OUT_LABEL = "Sign out"
@@ -249,6 +251,7 @@ class Panel:
 		on_sign_out: Callable[[str], None],
 		on_open_sign_in: Callable[[str], None],
 		on_toggle_metric: Callable[[str, str], None],
+		on_toggle_panel_metric: Callable[[str, str], None],
 		on_sign_in_code: Callable[[str, str], bool],
 	) -> None:
 		"""Create the panel as a hidden child of the application root window.
@@ -280,6 +283,9 @@ class Panel:
 			on_toggle_metric: Called with a service's key and a usage's key when
 				the user ticks or unticks that usage in the Show section. Callable
 				taking two str and returning None.
+			on_toggle_panel_metric: Called with a service's key and a usage's key
+				when the user ticks or unticks that usage in the Panel section.
+				Callable taking two str and returning None.
 			on_sign_in_code: Submit a pasted browser code for the selected service.
 				Callable taking the provider key and code and returning bool;
 				raises ValueError when the code cannot be submitted.
@@ -300,6 +306,7 @@ class Panel:
 			("on_sign_out", on_sign_out),
 			("on_open_sign_in", on_open_sign_in),
 			("on_toggle_metric", on_toggle_metric),
+			("on_toggle_panel_metric", on_toggle_panel_metric),
 			("on_sign_in_code", on_sign_in_code),
 		):
 			if not callable(callback):
@@ -313,6 +320,7 @@ class Panel:
 		self._on_sign_out = on_sign_out
 		self._on_open_sign_in = on_open_sign_in
 		self._on_toggle_metric = on_toggle_metric
+		self._on_toggle_panel_metric = on_toggle_panel_metric
 		self._on_sign_in_code = on_sign_in_code
 		self._selected_key = providers[0].key
 		self._current = describe(self._selected_key)
@@ -611,7 +619,7 @@ class Panel:
 		return y + self._unit(20)
 
 	def _draw_body(self, y: float) -> float:
-		"""Draw every usage row of the stored reading.
+		"""Draw the usage rows of the stored reading that the user chose to see.
 
 		Args:
 			y: Vertical cursor in device pixels. float.
@@ -624,7 +632,10 @@ class Panel:
 			return self._draw_skeleton_rows(y) if self._loading() else y
 
 		now = datetime.now(timezone.utc)
+		shown = self._current.in_panel
 		for window in snapshot.windows():
+			if window.key not in shown:
+				continue
 			y = self._draw_row(
 				f"limit:{window.key}",
 				window.label,
@@ -635,9 +646,10 @@ class Panel:
 			)
 			y += self._unit(LIMIT_ROW_GAP)
 
-		if snapshot.breakdown:
+		products = [row for row in snapshot.breakdown if f"{PRODUCT_KEY_PREFIX}{row.key}" in shown]
+		if products:
 			y = self._draw_section_title(PRODUCT_SECTION_TITLE, y + self._unit(6))
-			for row in snapshot.breakdown:
+			for row in products:
 				y = self._draw_row(
 					f"{PRODUCT_KEY_PREFIX}{row.key}",
 					row.label,
@@ -1103,9 +1115,9 @@ class Panel:
 		"""Draw every setting, in the groups the Mac app puts them in.
 
 		Account comes first, with who is signed in to the service of the tab,
-		then General, with what applies to the whole widget. Show, last, lists
-		which of its usages the tray icons show, once there is a reading to say
-		what those are.
+		then General, with what applies to the whole widget. Panel lists which
+		of its usages the panel shows and Show, last, which the tray icons show,
+		both once there is a reading to say what those are.
 
 		Args:
 			y: Vertical cursor in device pixels. float.
@@ -1118,8 +1130,10 @@ class Panel:
 		y = self._draw_section_label(GENERAL_TITLE, y + self._unit(SETTINGS_SECTION_GAP), SECTION_LABEL_GAP)
 		y = self._draw_startup_row(y)
 		if self._current.groups:
+			y = self._draw_section_label(PANEL_TITLE, y + self._unit(SETTINGS_SECTION_GAP), SHOW_LABEL_GAP)
+			y = self._draw_metric_checklist(y, self._current.in_panel, PANEL_KEY_PREFIX)
 			y = self._draw_section_label(SHOW_TITLE, y + self._unit(SETTINGS_SECTION_GAP), SHOW_LABEL_GAP)
-			y = self._draw_show_rows(y)
+			y = self._draw_metric_checklist(y, self._current.displayed, SHOW_KEY_PREFIX)
 		return self._draw_sign_in_link(y)
 
 	def _draw_section_label(self, title: str, y: float, gap: float) -> float:
@@ -1137,25 +1151,32 @@ class Panel:
 		item = self._text((self._unit(PANEL_PAD), y), title, "caption_strong", self._palette.label_secondary)
 		return self._canvas.bbox(item)[3] + self._unit(gap)
 
-	def _draw_show_rows(self, y: float) -> float:
+	def _draw_metric_checklist(self, y: float, checked_keys: frozenset[str], prefix: str) -> float:
 		"""Draw one checkbox per usage the reading reports.
 
-		A checked usage is one the tray icons show. Every one can be unchecked,
-		because the FORL icon appears in the tray once no usage icon is left.
+		The Panel section, which picks the rows the panel shows, and the Show
+		section, which picks the tray icons, are both this list. Every box can be
+		unchecked: an empty panel keeps its heading and footer, and the FORL icon
+		appears in the tray once no usage icon is left.
 
 		Args:
 			y: Vertical cursor in device pixels. float.
+			checked_keys: Keys of the usages to draw checked. frozenset of str.
+			prefix: What each row's click area is keyed by, before the usage's
+				key, which says which list it belongs to. str, non-empty.
 
 		Returns:
 			float: The vertical cursor after the last row.
 		"""
+		require_type(checked_keys, frozenset, "checked_keys")
+		require_non_empty_str(prefix, "prefix")
 		pad = self._unit(PANEL_PAD)
 		right = self._unit(PANEL_WIDTH) - pad
 		size = max(1, int(round(self._unit(CHECKBOX_SIZE))))
 		height = self._unit(SHOW_ROW_HEIGHT)
 		for group in self._current.groups:
 			for metric in group:
-				checked = metric.key in self._current.displayed
+				checked = metric.key in checked_keys
 				box = ImageTk.PhotoImage(
 					render_checkbox(
 						size,
@@ -1176,7 +1197,7 @@ class Panel:
 					self._palette.label_primary,
 					anchor="w",
 				)
-				self._add_hit((pad, y, right, y + height), f"{SHOW_KEY_PREFIX}{metric.key}")
+				self._add_hit((pad, y, right, y + height), f"{prefix}{metric.key}")
 				y += height
 		return y
 
@@ -1617,6 +1638,8 @@ class Panel:
 			self.select(key[len(TAB_KEY_PREFIX):])
 		elif key.startswith(SHOW_KEY_PREFIX):
 			self._on_toggle_metric(self._selected_key, key[len(SHOW_KEY_PREFIX):])
+		elif key.startswith(PANEL_KEY_PREFIX):
+			self._on_toggle_panel_metric(self._selected_key, key[len(PANEL_KEY_PREFIX):])
 		elif key == GEAR_KEY:
 			self._set_view(SETTINGS_VIEW)
 		elif key == BACK_KEY:

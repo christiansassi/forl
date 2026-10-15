@@ -33,12 +33,15 @@ from ..providers import Provider
 from ..settings.store import Preferences, load as load_preferences, save as save_preferences
 from ..usage.errors import CredentialsError, UsageRequestError
 from ..usage.poller import PollResult, UsagePoller
-from ..usage.snapshot import LIMIT_GROUP, PRODUCT_GROUP, SESSION_KEY, Metric, UsageSnapshot, now_utc
+from ..usage.snapshot import LIMIT_GROUP, PRODUCT_GROUP, SESSION_KEY, WEEKLY_KEY, Metric, UsageSnapshot, now_utc
 from ..validation import require_non_empty_str, require_positive_int, require_type
 from .formatting import format_icon_tooltip, format_next_update
 
 DEFAULT_POLL_SECONDS = 60
 DEFAULT_METRIC_KEY = SESSION_KEY
+# What the panel shows of a service nobody has chosen for: the two windows every
+# plan has. The rest are a tick away in the settings.
+DEFAULT_PANEL_KEYS = (SESSION_KEY, WEEKLY_KEY)
 
 LOADING_TEXT = "Loading"
 
@@ -107,6 +110,8 @@ class ProviderView(NamedTuple):
 			them, which is what the Show section lists. tuple of tuple of Metric.
 		displayed: Keys of the usages the tray icons show, which is what the
 			Show section checks. frozenset of str.
+		in_panel: Keys of the usages the panel shows, which is what the Panel
+			section checks. frozenset of str.
 		accepting_code: Whether the current sign-in accepts a pasted code. bool.
 	"""
 
@@ -121,6 +126,7 @@ class ProviderView(NamedTuple):
 	account: str
 	groups: tuple[tuple[Metric, ...], ...]
 	displayed: frozenset[str]
+	in_panel: frozenset[str]
 	accepting_code: bool = False
 
 
@@ -134,6 +140,24 @@ def quit_rows() -> tuple[MenuRow, ...]:
 		tuple of MenuRow: The one line that quits the widget.
 	"""
 	return (MenuRow(QUIT_KEY, QUIT_LABEL, False),)
+
+
+def _toggled(keys: tuple[str, ...], key: str) -> tuple[str, ...]:
+	"""Return a list of usage keys with one added at the end, or taken out.
+
+	Args:
+		keys: The keys as they stand. tuple of str.
+		key: The key to add or take out. str, non-empty.
+
+	Returns:
+		tuple of str: The keys without key when it was there, with it at the end
+		when it was not.
+	"""
+	require_type(keys, tuple, "keys")
+	require_non_empty_str(key, "key")
+	if key in keys:
+		return tuple(other for other in keys if other != key)
+	return keys + (key,)
 
 
 class WidgetCore:
@@ -188,6 +212,8 @@ class WidgetCore:
 		self._preferences = load_preferences(provider.key)
 		views = self._preferences.views
 		self._selected: tuple[str, ...] = views if views is not None else (DEFAULT_METRIC_KEY,)
+		panel = self._preferences.panel
+		self._in_panel: tuple[str, ...] = panel if panel is not None else DEFAULT_PANEL_KEYS
 
 		self._poller = UsagePoller(
 			read=provider.read,
@@ -309,6 +335,7 @@ class WidgetCore:
 			account=account,
 			groups=self.metric_groups(),
 			displayed=frozenset(self.displayed_keys()),
+			in_panel=frozenset(self._in_panel),
 		)
 
 	def displayed_keys(self) -> tuple[str, ...]:
@@ -436,11 +463,24 @@ class WidgetCore:
 			None.
 		"""
 		require_non_empty_str(key, "key")
-		if key in self._selected:
-			self._selected = tuple(other for other in self._selected if other != key)
-		else:
-			self._selected = self._selected + (key,)
+		self._selected = _toggled(self._selected, key)
 		self.store(replace(self._preferences, views=self._selected))
+
+	def toggle_panel_metric(self, key: str) -> None:
+		"""Add a usage to the rows the panel shows, or take it away.
+
+		Every usage can be taken away, the last one included, which leaves the
+		panel with its heading and its footer.
+
+		Args:
+			key: Key of the usage the user clicked. str, non-empty.
+
+		Returns:
+			None.
+		"""
+		require_non_empty_str(key, "key")
+		self._in_panel = _toggled(self._in_panel, key)
+		self.store(replace(self._preferences, panel=self._in_panel))
 
 	def store(self, preferences: Preferences) -> None:
 		"""Keep a set of preferences, write it to disk and report the change.

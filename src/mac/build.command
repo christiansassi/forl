@@ -13,15 +13,21 @@ if ! xcrun --find xcodebuild >/dev/null 2>&1 || ! xcodebuild -version >/dev/null
 	exit 1
 fi
 
+# Built outside the checkout. A checkout on a Desktop or in Documents synced with
+# iCloud, or in any other synced folder, has Finder information added to every
+# file it gains, and codesign refuses a bundle that carries it, so the build
+# would fail at signing. The user's cache folder is never synced.
+build_dir="$HOME/Library/Caches/io.forl.build"
+
 xcodebuild \
 	-project "$project_dir/FORL.xcodeproj" \
 	-target FORL \
 	-configuration Release \
-	"SYMROOT=$project_dir/.build/products" \
-	"OBJROOT=$project_dir/.build/intermediates" \
+	"SYMROOT=$build_dir/products" \
+	"OBJROOT=$build_dir/intermediates" \
 	build
 
-built_app="$project_dir/.build/products/Release/FORL.app"
+built_app="$build_dir/products/Release/FORL.app"
 test -d "$built_app/Contents/PlugIns/FORLWidgets.appex"
 codesign --verify --deep --strict "$built_app"
 
