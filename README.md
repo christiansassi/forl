@@ -20,6 +20,7 @@
 	- [macOS](#-macos)
 	- [Windows](#-windows)
 	- [Linux](#-linux)
+	- [iOS](#-ios)
 
 # Introduction
 
@@ -110,3 +111,14 @@ gnome-extensions enable usage@forl.io
 On Wayland, GNOME Shell only sees a newly installed extension after you log out and back in.
 
 The extension and FORL talk over the session bus: the readings reach the top bar as soon as FORL takes them, the extension tells you when FORL is not running, and signing in or the settings open FORL's own panel, starting FORL first when it is closed. While the extension is on, FORL opens its panel from the top bar as it would from a tray.
+
+## <img src="assets/os/macos.png" alt="iOS" height="24" align="absmiddle"> iOS
+
+> [!IMPORTANT]
+> Requires the [Scriptable](https://apps.apple.com/app/scriptable/id1405459188) app.
+
+1. Copy `src/ios/FORL.js` into the Scriptable folder in iCloud Drive, or paste it into a new script.
+2. Run it in Scriptable to sign in.
+3. Add a Scriptable widget to the home screen or the lock screen, and choose FORL as its script.
+
+A widget shows the current session, and the week where it has room. To choose what it shows, run FORL, tap **Usages**, tick them in order, tap **Copy the Parameter**, and paste it into the widget's **Parameter** in **Edit Widget**: the small and lock screen widgets show the first usage, the medium one the first one's service, the large one every service. The background, black or white, is set in the same place.
