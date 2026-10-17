@@ -3,12 +3,13 @@
  *
  * FORL offers its readings on the session bus as io.forl.Usage, and announces
  * every change, the way the Mac app hands its widgets a reading and asks
- * WidgetKit to redraw them. This extension shows them the way FORL shows them
- * where it has a tray: in the top bar, one icon per usage chosen for the tray,
- * drawn as the tray icons are, and on a click, the panel, laid out as the panel
- * is. Whatever the panel lets the user do, signing in and the settings, opens
- * FORL's own panel through the bus, which starts FORL first when it is not
- * running, as a Mac widget opens the app.
+ * WidgetKit to redraw them. This extension shows them as GNOME shows its own
+ * indicators: in the top bar, each service's mark in the bar's text color with
+ * the percentage of each usage chosen for the tray beside it, and on a click, a
+ * menu of the Shell's own items with a level bar per usage. Whatever FORL's
+ * panel lets the user do, signing in and the settings, opens that panel through
+ * the bus, which starts FORL first when it is not running, as a Mac widget
+ * opens the app.
  *
  * The extension holds a name of its own, io.forl.Shell, while it is turned on.
  * That is how FORL knows something stands in for a tray, and opens its panel
@@ -29,9 +30,9 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 
-import {drawAppMark, drawIcon} from './icon.js';
+import {Marks, drawAppMark, foregroundOf} from './icon.js';
 import {Panel} from './panel.js';
-import {currentPalette, interfaceSettings} from './theme.js';
+import {accentHex, interfaceSettings, readingColor} from './theme.js';
 
 // FORL on the session bus, and the name this extension holds there.
 const BUS_NAME = 'io.forl.Usage';
@@ -39,19 +40,21 @@ const OBJECT_PATH = '/io/forl/Usage';
 const INTERFACE = 'io.forl.Usage';
 const SHELL_NAME = 'io.forl.Shell';
 
-// Edge of an icon in the top bar, and the space between two of them, in pixels
+// Edge of an icon in the top bar, as GNOME sizes its status icons, and the
+// space between a mark and its reading and between two services, in pixels
 // before the Shell scales the interface.
 const ICON_SIZE = 16;
-const ICON_GAP = 6;
+const READING_GAP = 4;
+const SERVICE_GAP = 10;
+
+// What separates two readings of one service in the top bar.
+const READING_SEPARATOR = ' · ';
 
 // How often the open panel steps its countdown, spinner and skeleton.
 const TICK_MILLISECONDS = 50;
 
 // Where FORL keeps the shared artwork inside the extension.
 const ASSETS_DIR = 'assets';
-
-// The panel's surface, with the padding the panel keeps around its content.
-const PANEL_PAD = 20;
 
 const ForlIndicator = GObject.registerClass(
 class ForlIndicator extends PanelMenu.Button {
@@ -62,10 +65,21 @@ class ForlIndicator extends PanelMenu.Button {
 		this._settings = interfaceSettings();
 		this._settingsChanged = this._settings.connect('changed', () => this._render());
 
-		this._icons = new St.BoxLayout({style: `spacing: ${ICON_GAP}px;`});
+		this._icons = new St.BoxLayout({style: `spacing: ${SERVICE_GAP}px;`});
 		this.add_child(this._icons);
-		this._panel = new Panel(this._assetsPath, (service, view) => this._openForl(service, view));
-		this.menu.box.add_child(this._panel.actor);
+		this._marks = new Marks(this._assetsPath);
+		this._panel = new Panel(this.menu, this._marks, (service, view) => this._openForl(service, view));
+		// The marks take the bar's text color, which is known once the bar has
+		// styled the indicator, and changes with the theme.
+		this._foreground = '';
+		this.connect('style-changed', () => {
+			const color = foregroundOf(this);
+			const key = `${color.red},${color.green},${color.blue}`;
+			if (key !== this._foreground) {
+				this._foreground = key;
+				this._renderIcons();
+			}
+		});
 		this._tick = 0;
 		this.menu.connect('open-state-changed', (_menu, open) => this._onOpenChanged(open));
 
@@ -153,64 +167,56 @@ class ForlIndicator extends PanelMenu.Button {
 		return St.ThemeContext.get_for_stage(global.stage).scale_factor;
 	}
 
-	// Redraw the icons, and the panel when it is open.
+	// Redraw the icons and the menu. The menu is kept filled while it is closed
+	// too, since the Shell does not open a menu that has nothing in it.
 	_render() {
 		this._renderIcons();
-		if (this.menu.isOpen) {
-			this._renderPanel(false);
-		}
+		this._renderPanel(false);
 	}
 
-	// Put one icon in the bar per usage chosen for the tray, in the order of the
-	// tabs, or the app's own icon when there is none, so FORL can always be
-	// reached from the bar. Clicking a service's icon opens the panel on it.
+	// Put each service someone is signed in to in the bar, as its mark and the
+	// readings chosen for the tray, in the order of the tabs, or the app's own
+	// icon when there is none, so FORL can always be reached from the bar.
 	_renderIcons() {
 		this._icons.destroy_all_children();
-		const family = this._settings.get_string('font-name');
+		const foreground = foregroundOf(this);
 		const services = Array.isArray(this._document.services) ? this._document.services : [];
 		for (const service of services) {
-			if (!service.signed_in) {
+			const usages = (service.usages || []).filter(entry => entry.in_tray);
+			if (!service.signed_in || usages.length === 0) {
 				continue;
 			}
-			for (const usage of (service.usages || []).filter(entry => entry.in_tray)) {
-				const area = new St.DrawingArea({
-					reactive: true,
+			const box = new St.BoxLayout({style: `spacing: ${READING_GAP}px;`});
+			const mark = this._marks.icon(service.logo, ICON_SIZE, foreground, 'system-status-icon');
+			mark.y_align = Clutter.ActorAlign.CENTER;
+			box.add_child(mark);
+			usages.forEach((usage, index) => {
+				const percent = usage.percent;
+				const text = percent === null || percent === undefined ? '–' : `${Math.round(percent)}%`;
+				const color = percent === null || percent === undefined ? null : readingColor(percent);
+				const reading = new St.Label({
+					text: index > 0 ? `${READING_SEPARATOR}${text}` : text,
 					y_align: Clutter.ActorAlign.CENTER,
-					style: `width: ${ICON_SIZE}px; height: ${ICON_SIZE}px;`,
+					style: color ? `color: ${color};` : '',
 				});
-				area.connect('repaint', () => {
-					const cr = area.get_context();
-					const [width, height] = area.get_surface_size();
-					drawIcon(cr, Math.min(width, height), usage.percent, service.accent, family);
-					cr.$dispose();
-				});
-				area.connect('button-press-event', () => {
-					this._panel.select(service.key);
-					return Clutter.EVENT_PROPAGATE;
-				});
-				this._icons.add_child(area);
-			}
+				box.add_child(reading);
+			});
+			this._icons.add_child(box);
 		}
 		if (this._icons.get_n_children() === 0) {
 			const area = new St.DrawingArea({
+				style_class: 'system-status-icon',
 				y_align: Clutter.ActorAlign.CENTER,
-				style: `width: ${ICON_SIZE}px; height: ${ICON_SIZE}px;`,
+				style: `width: ${ICON_SIZE}px; height: ${ICON_SIZE}px; padding: 0;`,
 			});
-			area.connect('repaint', () => {
-				const cr = area.get_context();
-				const [width, height] = area.get_surface_size();
-				drawAppMark(cr, Math.min(width, height));
-				cr.$dispose();
-			});
+			area.connect('repaint', () => drawAppMark(area));
 			this._icons.add_child(area);
 		}
 	}
 
-	// Lay the panel out on its own surface, in the app mode the user chose.
+	// Fill the menu, in the accent color the user chose.
 	_renderPanel(fromEmpty) {
-		const palette = currentPalette(this._settings);
-		this.menu.box.set_style(`background-color: ${palette.surface}; padding: ${PANEL_PAD}px;`);
-		this._panel.build(this._document, palette, this._scale(), fromEmpty);
+		this._panel.build(this._document, accentHex(this._settings), this._scale(), fromEmpty);
 	}
 
 	// Fill the bars from empty each time the panel opens, as the panel does, and

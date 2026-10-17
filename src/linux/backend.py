@@ -33,13 +33,15 @@ APP_DIR_NAME = "forl"
 PLASMA_WIDGET_ID = "io.forl.usage"
 PLASMA_WIDGET_SOURCE = Path(__file__).resolve().parent / "plasma" / PLASMA_WIDGET_ID
 PLASMA_WIDGETS_DIR = ("plasma", "plasmoids")
+PLASMA_WIDGET_IMAGES = ("contents", "images")
 # The GNOME Shell extension, likewise, and where the Shell looks for the
 # extensions of one user.
 GNOME_EXTENSION_UUID = "usage@forl.io"
 GNOME_EXTENSION_SOURCE = Path(__file__).resolve().parent / "gnome" / GNOME_EXTENSION_UUID
 GNOME_EXTENSIONS_DIR = ("gnome-shell", "extensions")
-# The marks and the app icon the extension draws, shared with the panel and
-# copied in beside it rather than kept twice in the tree.
+# The marks and the app icon the GNOME extension and the Plasma widget draw,
+# shared with the panel and copied in beside them rather than kept twice in
+# the tree.
 SHARED_ASSETS_DIR = Path(__file__).resolve().parents[1] / "common" / "assets"
 GNOME_EXTENSION_ASSETS = "assets"
 AUTOSTART_FILE = "forl.desktop"
@@ -475,6 +477,9 @@ def install_plasma_widget() -> bool:
 	without the user installing anything. A copy that already matches is left
 	alone.
 
+	The widget shows the provider marks, so the shared artwork is copied into
+	the images of the package with it.
+
 	Returns:
 		bool: True when the widget is installed and current. False on a desktop
 		that is not Plasma, or when it could not be copied.
@@ -482,7 +487,8 @@ def install_plasma_widget() -> bool:
 	if "KDE" not in _desktops():
 		return False
 	target = _xdg_dir("XDG_DATA_HOME", ".local", "share").joinpath(*PLASMA_WIDGETS_DIR) / PLASMA_WIDGET_ID
-	return _install_tree(PLASMA_WIDGET_SOURCE, target)
+	installed = _install_tree(PLASMA_WIDGET_SOURCE, target)
+	return _install_tree(SHARED_ASSETS_DIR, target.joinpath(*PLASMA_WIDGET_IMAGES)) and installed
 
 
 def install_gnome_extension() -> bool:
