@@ -97,7 +97,13 @@ FORL writes each service's reading to `~/.cache/forl/claude.json` and `~/.cache/
 
 ### Desktop widget
 
-On KDE Plasma 6, FORL installs its widget when it starts: add it from **Add Widgets**.
+On KDE Plasma 6, FORL installs its widget when it starts: add it from **Add Widgets**, to a panel or to the desktop. It is drawn with Plasma's own components, so it follows Breeze, light or dark, and any other Plasma theme. In a panel it shows each service's mark and the readings chosen for the tray, and opens the full view when clicked; on the desktop it shows the full view, with a progress bar for each usage chosen for the panel. Its buttons open FORL's panel to sign in or change the settings, and start FORL when it is not running.
+
+Plasma keeps a widget's code in memory, so after FORL updates it, restart Plasma to see the new version:
+
+```bash
+systemctl --user restart plasma-plasmashell
+```
 
 ### GNOME extension
 
@@ -107,6 +113,6 @@ On GNOME 45 or later, FORL installs its extension when it starts but does not tu
 gnome-extensions enable usage@forl.io
 ```
 
-On Wayland, GNOME Shell only sees a newly installed extension after you log out and back in.
+On Wayland, GNOME Shell only sees a newly installed extension, or a new version of it, after you log out and back in.
 
 The extension and FORL talk over the session bus: the readings reach the top bar as soon as FORL takes them, the extension tells you when FORL is not running, and signing in or the settings open FORL's own panel, starting FORL first when it is closed. While the extension is on, FORL opens its panel from the top bar as it would from a tray.
