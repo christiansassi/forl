@@ -1,90 +1,49 @@
 /*
- * The page the menu shows, laid out as src/common/ui/panel.py lays out the
- * panel of the Windows and Linux widgets.
+ * The menu the indicator opens, laid out as a GNOME menu.
  *
- * A row of tabs picks the service. Under it, a service someone is signed in to
- * shows its mark, its name and its plan, then one row per usage chosen for the
- * panel, with the name and what it covers on the left, a thin bar across the
- * middle and the percentage on the right, any split by product under its own
- * title, and a line counting down to the next reading. A service nobody is
- * signed in to says so where the panel offers the sign-in. Until the first
- * reading arrives, the page is a pulsing skeleton of the rows to come.
+ * FORL's own panel draws a surface of its own, with tabs, its own type ramp and
+ * its own colors, which reads as foreign in the top bar of GNOME. This menu
+ * shows the same readings in the Shell's own menu items instead, so it takes
+ * the theme's surface, text, fonts, spacing and highlight like every other menu
+ * in the bar. Each service is one section, one after the other rather than
+ * behind tabs, as the Shell lists devices: a header with the provider mark, the
+ * name and the plan, then one item per usage chosen for the panel, with the
+ * name and the percentage over a level bar and when it resets under it, the
+ * split by product under its own heading, and the line saying when the next
+ * reading comes.
  *
- * Every distance is the panel's, in the same layout units, and the Shell scales
- * them with the display as Windows and Tk do. The colors come from theme.js.
- * What the panel lets the user change, the settings behind its gear and the
- * sign-in itself, stays in FORL: the gear and the sign-in open FORL's own panel
- * there, as a Mac widget opens the app. While FORL is not running, the page
- * says so and offers to start it.
+ * What the panel lets the user change, signing in and the settings, stays in
+ * FORL: those items open FORL's own panel there, as a Mac widget opens the app.
+ * While FORL is not running, the menu says so and offers to start it.
  */
 
 import Clutter from 'gi://Clutter';
-import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import St from 'gi://St';
 
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+
 import {formatNextUpdate, formatPercent, formatSubtitle} from './formatting.js';
-import {mixHex, readableAccent, textStyle, trackHex, usageHex} from './theme.js';
+import {foregroundOf} from './icon.js';
+import {troughCss, usageHex} from './theme.js';
 
-const PANEL_WIDTH = 430;
-const PANEL_PAD = 20;
-const CONTENT_WIDTH = PANEL_WIDTH - 2 * PANEL_PAD;
+// Width of a level bar, which sets the width of the menu, and its thickness, in
+// pixels before the Shell scales the interface. GNOME draws level bars this
+// thick in its menus.
+const BAR_WIDTH = 280;
+const BAR_HEIGHT = 6;
 
-const LABEL_COLUMN_WIDTH = 176;
-const BAR_COLUMN_LEFT = 206;
-const VALUE_COLUMN_WIDTH = 46;
-const BAR_HEIGHT = 5;
-const BAR_WIDTH = PANEL_WIDTH - PANEL_PAD - VALUE_COLUMN_WIDTH - BAR_COLUMN_LEFT;
-
-const LOGO_SIZE = 17;
-const LOGO_TITLE_GAP = 9;
-const PLAN_GAP = 10;
-const HEADER_GAP = 14;
-
-const TAB_HEIGHT = 30;
-const TAB_GAP = 4;
-const TAB_RADIUS = 7;
-const TAB_MARK_SIZE = 14;
-const TAB_MARK_GAP = 6;
-const TAB_FILL_OPACITY = 0.14;
-const TAB_STROKE_OPACITY = 0.35;
-const TABS_GAP = 14;
-
-const SIGN_IN_PAGE_PAD = 12;
-const SIGN_IN_BUTTON_HEIGHT = 44;
-
-const LIMIT_ROW_MIN_HEIGHT = 34;
-const LIMIT_ROW_GAP = 14;
-const PRODUCT_ROW_MIN_HEIGHT = 22;
-const PRODUCT_ROW_GAP = 10;
-const SECTION_TITLE_GAP = 26;
-const SECTION_TITLE_LEAD = 6;
-const FOOTER_LEAD = 4;
-const FOOTER_HEIGHT = 20;
-
-const SPINNER_SIZE = 13;
+const MARK_SIZE = 16;
+const SPINNER_SIZE = 12;
 const SPINNER_EXTENT = 110;
-const SPINNER_STROKE = 2;
+const SPINNER_STROKE = 1.5;
 const SPINNER_DEGREES_PER_SECOND = 320;
 
-// How long a bar takes to reach a new reading, in milliseconds. The panel moves
-// its bars on a critically damped spring of response 0.45, which comes to rest
-// in about this long.
-const BAR_DURATION = 650;
+// Opacity of secondary text, as GNOME dims the text under a title.
+const DIM_OPACITY = 166;
 
-const SKELETON_ROWS = [110, 80];
-const SKELETON_SUBTITLE_OFFSET = 17;
-const SKELETON_SUBTITLE_WIDTH = 150;
-const SKELETON_TEXT_HEIGHT = 10;
-const SKELETON_CAPTION_HEIGHT = 8;
-const SKELETON_TEXT_INSET = 3;
-const SKELETON_VALUE_WIDTH = 30;
-const SKELETON_PLAN_WIDTH = 36;
-const SKELETON_FOOTER_WIDTH = 130;
-const SKELETON_RADIUS = 3;
-const SKELETON_LOW_OPACITY = 0.07;
-const SKELETON_HIGH_OPACITY = 0.16;
-const SKELETON_PERIOD_SECONDS = 1.4;
+// How long a bar takes to reach a new reading, in milliseconds.
+const BAR_DURATION = 650;
 
 const PRODUCT_GROUP = 'product';
 const PRODUCT_SECTION_TITLE = "This week's usage by product";
@@ -92,17 +51,14 @@ const LOADING_TEXT = 'Loading';
 const NOT_SIGNED_IN_TEXT = 'Not signed in';
 const NEXT_UPDATE_PREFIX = 'Next update in';
 const NO_SERVICES_TEXT = 'Start FORL to see your usage here.';
-const SIGN_IN_TEXT = 'Sign in to {label}';
-const NOT_RUNNING_TEXT = 'FORL is not running.';
+const SIGN_IN_TEXT = 'Sign in to {label}…';
+const NOT_RUNNING_TEXT = 'FORL is not running';
 const START_TEXT = 'Start FORL';
+const SETTINGS_TEXT = 'FORL Settings';
 
-// The views of FORL's panel the page can open.
+// The views of FORL's panel the menu can open.
 const USAGE_VIEW = 'usage';
 const SETTINGS_VIEW = 'settings';
-
-// The gear, drawn from the icon theme in the panel's size.
-const GEAR_ICON = 'emblem-system-symbolic';
-const CONTROL_SIZE = 16;
 
 // What makes a box lay its children out in a column. GNOME 48 replaced the
 // vertical property with orientation, and later releases dropped vertical.
@@ -110,416 +66,238 @@ const COLUMN = 'orientation' in St.BoxLayout.prototype
 	? {orientation: Clutter.Orientation.VERTICAL}
 	: {vertical: true};
 
-// Return an empty block of a height, which is how the page keeps the panel's
-// vertical rhythm between the things on it.
-function spacer(height) {
-	return new St.Widget({style: `height: ${height}px;`});
+// Return a label, dimmed when it is secondary, and smaller when it is a
+// caption, as GNOME sets the line under a title.
+function label(text, {dim = false, caption = false, bold = false, expand = false} = {}) {
+	const style = [caption ? 'font-size: 0.9em;' : '', bold ? 'font-weight: bold;' : ''].join(' ');
+	const widget = new St.Label({text, style, x_expand: expand, y_align: Clutter.ActorAlign.CENTER});
+	if (dim) {
+		widget.opacity = DIM_OPACITY;
+	}
+	return widget;
 }
 
-// Return a label in a text style and a color.
-function label(text, style, color, extra = '') {
-	return new St.Label({text, style: `${textStyle(style, color)} ${extra}`});
-}
-
-// Return words that act when clicked and are underlined while the pointer is
-// over them, as the panel's actions are.
-function action(text, style, color, onClick) {
-	const words = label(text, style, color);
-	const button = new St.Button({child: words, can_focus: true});
-	button.connect('notify::hover', () => {
-		words.set_style(`${textStyle(style, color)} text-decoration: ${button.hover ? 'underline' : 'none'};`);
-	});
-	button.connect('clicked', onClick);
-	return button;
+// Return a menu item that only shows something.
+function infoItem() {
+	return new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
 }
 
 export class Panel {
 	// onOpen is called with a service key, or an empty string, and a view, to
 	// open FORL's own panel.
-	constructor(assetsPath, onOpen) {
+	constructor(menu, marks, onOpen) {
+		this._menu = menu;
+		this._marks = marks;
 		this._onOpen = onOpen;
-		this.actor = new St.BoxLayout({...COLUMN, style: `width: ${CONTENT_WIDTH}px;`});
-		this._assetsPath = assetsPath;
-		this._selected = '';
-		this._svgs = new Map();
 		// The share each bar last showed, so a new reading moves a bar from where
-		// it is rather than from empty, as the panel's springs do.
+		// it is rather than from empty.
 		this._fractions = new Map();
-		this._skeletons = [];
-		this._countdown = null;
-		this._spinner = null;
+		this._countdowns = [];
+		this._spinners = [];
 		this._started = GLib.get_monotonic_time();
 	}
 
-	// Choose the service whose tab the page opens on.
-	select(key) {
-		this._selected = key;
-	}
-
-	// Lay the page out again for a document FORL wrote, in a palette, at a
-	// scale. fromEmpty is true when the menu has just opened, which is when the
-	// panel fills its bars from empty.
-	build(document, palette, scale, fromEmpty) {
-		this._document = document;
-		this._palette = palette;
+	// Fill the menu again for a document FORL sent, with the user's accent
+	// color, at a scale. fromEmpty is true when the menu has just opened, which
+	// is when the bars fill from empty.
+	build(document, accent, scale, fromEmpty) {
+		this._accent = accent;
 		this._scale = scale;
-		this._skeletons = [];
-		this._countdown = null;
-		this._spinner = null;
-		this.actor.destroy_all_children();
+		this._countdowns = [];
+		this._spinners = [];
+		this._foreground = foregroundOf(this._menu.box);
+		this._menu.removeAll();
 
 		if (document.running === false) {
-			this._addNotRunningPage();
+			this._addCaption(NOT_RUNNING_TEXT);
+			this._menu.addAction(START_TEXT, () => this._onOpen('', USAGE_VIEW));
 			return;
 		}
 		const services = Array.isArray(document.services) ? document.services : [];
 		if (services.length === 0) {
-			this.actor.add_child(label(NO_SERVICES_TEXT, 'caption', palette.labelSecondary));
+			this._addCaption(NO_SERVICES_TEXT);
 			return;
 		}
-		if (!services.some(service => service.key === this._selected)) {
-			this._selected = services[0].key;
-		}
-		const current = services.find(service => service.key === this._selected);
-		this._accent = readableAccent(current.accent, palette);
-
-		this._addTabs(services);
-		if (!current.signed_in) {
-			this._addSignInPage(current);
-			return;
-		}
-		const loading = (current.usages || []).length === 0 && current.status === LOADING_TEXT;
-		this._addHeader(current, document.show_plan !== false, loading);
-		if (loading) {
-			this._addSkeletonRows();
-		} else {
-			this._addBody(current, fromEmpty);
-		}
-		this._addFooter(current, loading);
+		services.forEach((service, index) => {
+			if (index > 0) {
+				this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+			}
+			this._addService(service, document.show_plan !== false, fromEmpty);
+		});
+		this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+		this._menu.addAction(SETTINGS_TEXT, () => this._onOpen('', SETTINGS_VIEW));
 		this.tick();
 	}
 
-	// Step what changes between readings: the countdown, the spinner and the
-	// pulse of the skeleton. Called on a short timer while the menu is open.
+	// Step what changes between readings: the countdowns and the spinners.
+	// Called on a short timer while the menu is open.
 	tick() {
-		const seconds = (GLib.get_monotonic_time() - this._started) / 1e6;
-		if (this._skeletons.length > 0) {
-			const phase = (seconds % SKELETON_PERIOD_SECONDS) / SKELETON_PERIOD_SECONDS;
-			const swing = 0.5 - 0.5 * Math.cos(2 * Math.PI * phase);
-			const opacity = SKELETON_LOW_OPACITY + (SKELETON_HIGH_OPACITY - SKELETON_LOW_OPACITY) * swing;
-			const shade = mixHex(this._palette.surface, this._palette.labelPrimary, opacity);
-			for (const block of this._skeletons) {
-				block.set_style(`${block._forlShape} background-color: ${shade};`);
+		for (const countdown of this._countdowns) {
+			const due = GLib.DateTime.new_from_iso8601(countdown.due, null);
+			if (due === null) {
+				continue;
+			}
+			const text = formatNextUpdate(due.difference(GLib.DateTime.new_now_utc()) / 1e6);
+			if (countdown.label.text !== text) {
+				countdown.label.text = text;
 			}
 		}
-		if (this._countdown !== null) {
-			const due = GLib.DateTime.new_from_iso8601(this._countdown.due, null);
-			if (due !== null) {
-				const left = due.difference(GLib.DateTime.new_now_utc()) / 1e6;
-				const text = formatNextUpdate(left);
-				if (this._countdown.label.text !== text) {
-					this._countdown.label.text = text;
-				}
+		for (const spinner of this._spinners) {
+			spinner.queue_repaint();
+		}
+	}
+
+	// One service: its header, and its readings or the way to sign in.
+	_addService(service, showPlan, fromEmpty) {
+		this._addHeader(service, showPlan);
+		if (!service.signed_in) {
+			this._menu.addAction(SIGN_IN_TEXT.replace('{label}', service.label), () => this._onOpen(service.key, USAGE_VIEW));
+			if (service.status && service.status !== NOT_SIGNED_IN_TEXT) {
+				this._addCaption(service.status);
 			}
+			return;
 		}
-		this._spinner?.queue_repaint();
+		const loading = (service.usages || []).length === 0 && service.status === LOADING_TEXT;
+		if (!loading) {
+			this._addUsages(service, fromEmpty);
+		}
+		this._addFooter(service, loading);
 	}
 
-	// Return the image of a provider mark in a color, or null when the artwork
-	// is missing. The mark is read once, and the color written into it, so it is
-	// drawn by the Shell at whatever size it is shown.
-	_mark(service, size, color) {
-		let svg = this._svgs.get(service.logo);
-		if (svg === undefined) {
-			try {
-				const [, contents] = GLib.file_get_contents(GLib.build_filenamev([this._assetsPath, service.logo || '']));
-				svg = new TextDecoder().decode(contents);
-			} catch (error) {
-				svg = null;
-			}
-			this._svgs.set(service.logo, svg);
-		}
-		if (svg === null) {
-			return new St.Widget({style: `width: ${size}px; height: ${size}px;`});
-		}
-		const colored = svg.replace(/fill="[^"]*"/g, `fill="${color}"`);
-		const gicon = Gio.BytesIcon.new(new GLib.Bytes(new TextEncoder().encode(colored)));
-		return new St.Icon({gicon, icon_size: size});
-	}
-
-	// The tabs across the top. The selected one is tinted with its service's
-	// accent, filled lightly and outlined a little more strongly, and the one
-	// under the pointer takes its service's color.
-	_addTabs(services) {
-		const palette = this._palette;
-		const row = new St.BoxLayout({style: `spacing: ${TAB_GAP}px;`});
-		const width = (CONTENT_WIDTH - TAB_GAP * (services.length - 1)) / services.length;
-		for (const service of services) {
-			const selected = service.key === this._selected;
-			const accent = readableAccent(service.accent, palette);
-			const plate = selected
-				? `background-color: ${mixHex(palette.surface, accent, TAB_FILL_OPACITY)}; border: 1px solid ${mixHex(palette.surface, accent, TAB_STROKE_OPACITY)};`
-				: 'border: 1px solid transparent;';
-			const content = new St.BoxLayout({style: `spacing: ${TAB_MARK_GAP}px;`, x_align: Clutter.ActorAlign.CENTER, x_expand: true});
-			content.add_child(this._mark(service, TAB_MARK_SIZE, accent));
-			const style = selected ? 'section' : 'row';
-			const name = label(service.label, style, selected ? accent : palette.labelSecondary);
-			name.y_align = Clutter.ActorAlign.CENTER;
-			content.add_child(name);
-			const tab = new St.Button({
-				child: content,
-				reactive: !selected,
-				style: `width: ${width}px; height: ${TAB_HEIGHT}px; border-radius: ${TAB_RADIUS}px; ${plate}`,
-			});
-			if (!selected) {
-				tab.connect('notify::hover', () => {
-					name.set_style(textStyle(style, tab.hover ? accent : palette.labelSecondary));
-				});
-				tab.connect('clicked', () => {
-					this._selected = service.key;
-					this.build(this._document, this._palette, this._scale, true);
-				});
-			}
-			row.add_child(tab);
-		}
-		this.actor.add_child(row);
-		this.actor.add_child(spacer(TABS_GAP));
-	}
-
-	// What the page says while FORL is not running, and the way to start it.
-	_addNotRunningPage() {
-		const palette = this._palette;
-		this.actor.add_child(spacer(SIGN_IN_PAGE_PAD));
-		const message = label(NOT_RUNNING_TEXT, 'caption', palette.labelSecondary);
-		message.x_align = Clutter.ActorAlign.CENTER;
-		this.actor.add_child(message);
-		const box = new St.BoxLayout({style: `height: ${SIGN_IN_BUTTON_HEIGHT}px;`});
-		const start = action(START_TEXT, 'title', palette.labelPrimary, () => this._onOpen('', USAGE_VIEW));
-		start.x_expand = true;
-		start.x_align = Clutter.ActorAlign.CENTER;
-		start.y_align = Clutter.ActorAlign.CENTER;
-		box.add_child(start);
-		this.actor.add_child(box);
-		this.actor.add_child(spacer(SIGN_IN_PAGE_PAD));
-	}
-
-	// What a service nobody is signed in to shows, where the panel offers the
-	// sign-in, and why the last attempt failed when it did.
-	_addSignInPage(service) {
-		const palette = this._palette;
-		this.actor.add_child(spacer(SIGN_IN_PAGE_PAD));
-		const box = new St.BoxLayout({style: `height: ${SIGN_IN_BUTTON_HEIGHT}px;`});
-		const prompt = action(SIGN_IN_TEXT.replace('{label}', service.label), 'title', this._accent, () => this._onOpen(service.key, USAGE_VIEW));
-		prompt.x_expand = true;
-		prompt.x_align = Clutter.ActorAlign.CENTER;
-		prompt.y_align = Clutter.ActorAlign.CENTER;
-		box.add_child(prompt);
-		this.actor.add_child(box);
-		if (service.status && service.status !== NOT_SIGNED_IN_TEXT) {
-			const message = label(service.status, 'caption', palette.labelSecondary);
-			message.clutter_text.line_wrap = true;
-			this.actor.add_child(message);
-		}
-		this.actor.add_child(spacer(SIGN_IN_PAGE_PAD));
-	}
-
-	// The provider mark, its name, and the plan beside the name.
-	_addHeader(service, showPlan, loading) {
-		const palette = this._palette;
-		const header = new St.BoxLayout({style: `padding-bottom: ${HEADER_GAP}px;`});
-		const mark = this._mark(service, LOGO_SIZE, this._accent);
+	// The provider mark, the name, and the plan at the end of the line. A click
+	// opens FORL's panel on the service.
+	_addHeader(service, showPlan) {
+		const item = new PopupMenu.PopupBaseMenuItem();
+		const mark = this._marks.icon(service.logo, MARK_SIZE, this._foreground, 'popup-menu-icon');
 		mark.y_align = Clutter.ActorAlign.CENTER;
-		header.add_child(mark);
-		header.add_child(label(service.label, 'title', palette.labelPrimary, `padding-left: ${LOGO_TITLE_GAP}px;`));
-		if (showPlan && loading) {
-			const block = this._skeleton(SKELETON_PLAN_WIDTH, SKELETON_CAPTION_HEIGHT);
-			const holder = new St.Bin({child: block, style: `padding-left: ${PLAN_GAP}px;`, y_align: Clutter.ActorAlign.CENTER});
-			header.add_child(holder);
-		} else if (showPlan && service.plan) {
-			// The two runs sit on one baseline, as in the panel: the smaller one
-			// is set at the bottom of the line, lifted by what a smaller face
-			// reserves under its baseline.
-			const plan = label(service.plan, 'caption_strong', palette.labelTertiary, `padding-left: ${PLAN_GAP}px; padding-bottom: 2px;`);
-			plan.y_align = Clutter.ActorAlign.END;
-			header.add_child(plan);
+		item.add_child(mark);
+		item.add_child(label(service.label, {bold: true, expand: true}));
+		if (showPlan && service.plan) {
+			item.add_child(label(service.plan, {dim: true, caption: true}));
 		}
-		header.add_child(new St.Widget({x_expand: true}));
-		header.add_child(this._gear(service));
-		this.actor.add_child(header);
+		item.connect('activate', () => this._onOpen(service.key, USAGE_VIEW));
+		this._menu.addMenuItem(item);
 	}
 
-	// Return the gear that opens FORL's settings, which turns the service's
-	// color under the pointer as the panel's controls do.
-	_gear(service) {
-		const palette = this._palette;
-		const icon = new St.Icon({icon_name: GEAR_ICON, icon_size: CONTROL_SIZE, style: `color: ${palette.labelSecondary};`});
-		const button = new St.Button({child: icon, can_focus: true, y_align: Clutter.ActorAlign.CENTER});
-		button.connect('notify::hover', () => {
-			icon.set_style(`color: ${button.hover ? this._accent : palette.labelSecondary};`);
-		});
-		button.connect('clicked', () => this._onOpen(service.key, SETTINGS_VIEW));
-		return button;
-	}
-
-	// The usage rows the user chose to see, the products under their own title,
+	// The usages the user chose to see, the products under their own heading,
 	// and any extra usage after them.
-	_addBody(service, fromEmpty) {
+	_addUsages(service, fromEmpty) {
 		const usages = (service.usages || []).filter(usage => usage.in_panel);
 		for (const usage of usages.filter(usage => usage.group !== PRODUCT_GROUP)) {
-			this._addRow(`limit:${usage.key}`, usage.label, formatSubtitle(usage), usage.percent, LIMIT_ROW_MIN_HEIGHT, fromEmpty);
-			this.actor.add_child(spacer(LIMIT_ROW_GAP));
+			this._addRow(service.key, `limit:${usage.key}`, usage.label, formatSubtitle(usage), usage.percent, fromEmpty);
 		}
 		const products = usages.filter(usage => usage.group === PRODUCT_GROUP);
 		if (products.length > 0) {
-			this._addSectionTitle(PRODUCT_SECTION_TITLE);
+			this._addHeading(PRODUCT_SECTION_TITLE);
 			for (const usage of products) {
-				this._addRow(usage.key, usage.label, '', usage.percent, PRODUCT_ROW_MIN_HEIGHT, fromEmpty);
-				this.actor.add_child(spacer(PRODUCT_ROW_GAP));
+				this._addRow(service.key, usage.key, usage.label, '', usage.percent, fromEmpty);
 			}
 		}
 		if (service.extra && service.extra.label) {
-			this._addSectionTitle(service.extra.label);
-			this._addRow('extra', service.extra.label, '', service.extra.percent, PRODUCT_ROW_MIN_HEIGHT, fromEmpty);
-			this.actor.add_child(spacer(PRODUCT_ROW_GAP));
+			this._addHeading(service.extra.label);
+			this._addRow(service.key, 'extra', service.extra.label, '', service.extra.percent, fromEmpty);
 		}
 	}
 
-	// A section heading.
-	_addSectionTitle(title) {
-		this.actor.add_child(spacer(SECTION_TITLE_LEAD));
-		const box = new St.BoxLayout({style: `height: ${SECTION_TITLE_GAP}px;`});
-		box.add_child(label(title, 'section', this._palette.labelPrimary));
-		this.actor.add_child(box);
+	// A heading inside a service, set as GNOME sets the title of a group.
+	_addHeading(title) {
+		const item = infoItem();
+		item.add_child(label(title, {dim: true, caption: true, bold: true}));
+		this._menu.addMenuItem(item);
 	}
 
-	// One usage row: the name and the line under it on the left, the bar and the
-	// percentage centered against that block.
-	_addRow(key, name, subtitle, value, minHeight, fromEmpty) {
-		const palette = this._palette;
+	// A line of secondary text that may run long.
+	_addCaption(text) {
+		const item = infoItem();
+		const caption = label(text, {dim: true, caption: true, expand: true});
+		caption.clutter_text.line_wrap = true;
+		item.add_child(caption);
+		this._menu.addMenuItem(item);
+	}
+
+	// One usage: the name and the percentage on one line, the level bar under
+	// them, and the line saying when it resets under the bar.
+	_addRow(serviceKey, key, name, subtitle, value, fromEmpty) {
 		const percent = Math.min(Math.max(Number(value) || 0, 0), 100);
-		const row = new St.BoxLayout({style: `min-height: ${minHeight}px;`});
+		const item = infoItem();
+		const column = new St.BoxLayout({...COLUMN, x_expand: true, style: 'spacing: 4px;'});
 
-		const names = new St.BoxLayout({
-			...COLUMN,
-			y_align: Clutter.ActorAlign.START,
-			style: `width: ${LABEL_COLUMN_WIDTH}px; padding-right: ${BAR_COLUMN_LEFT - PANEL_PAD - LABEL_COLUMN_WIDTH}px;`,
-		});
-		const title = label(name, 'row', palette.labelPrimary);
-		title.clutter_text.line_wrap = true;
-		names.add_child(title);
-		if (subtitle) {
-			const line = label(subtitle, 'caption', palette.labelSecondary);
-			line.clutter_text.line_wrap = true;
-			names.add_child(line);
-		}
-		row.add_child(names);
+		const line = new St.BoxLayout();
+		line.add_child(label(name, {expand: true}));
+		line.add_child(label(formatPercent(percent), {dim: true, bold: true}));
+		column.add_child(line);
 
 		const radius = BAR_HEIGHT / 2;
-		const track = new St.Widget({
-			y_align: Clutter.ActorAlign.CENTER,
-			style: `width: ${BAR_WIDTH}px; height: ${BAR_HEIGHT}px; border-radius: ${radius}px; background-color: ${trackHex(percent, palette.surface)};`,
+		const trough = new St.Widget({
+			style: `width: ${BAR_WIDTH}px; height: ${BAR_HEIGHT}px; border-radius: ${radius}px; background-color: ${troughCss(this._foreground)};`,
 		});
 		const fill = new St.Widget({
-			style: `height: ${BAR_HEIGHT}px; border-radius: ${radius}px; background-color: ${usageHex(percent)};`,
+			style: `height: ${BAR_HEIGHT}px; border-radius: ${radius}px; background-color: ${usageHex(percent, this._accent)};`,
 		});
-		track.add_child(fill);
-		row.add_child(track);
-		this._animateBar(key, fill, percent / 100, fromEmpty);
+		trough.add_child(fill);
+		column.add_child(trough);
+		this._animateBar(`${serviceKey}:${key}`, fill, percent / 100, fromEmpty);
 
-		const reading = label(formatPercent(percent), 'row_value', palette.labelSecondary, `width: ${VALUE_COLUMN_WIDTH}px; text-align: right;`);
-		reading.y_align = Clutter.ActorAlign.CENTER;
-		row.add_child(reading);
-		this.actor.add_child(row);
+		for (const text of subtitle ? subtitle.split('\n') : []) {
+			column.add_child(label(text, {dim: true, caption: true}));
+		}
+		item.add_child(column);
+		this._menu.addMenuItem(item);
 	}
 
 	// Move a bar's fill from the share it last showed to a new one. A fill
 	// shorter than the bar is round is drawn as the round end alone, so a small
 	// reading still shows something, and an empty bar shows no fill at all.
 	_animateBar(key, fill, fraction, fromEmpty) {
-		const scoped = `${this._selected}:${key}`;
 		const widthFor = share => (share <= 0 ? 0 : Math.max(BAR_HEIGHT, BAR_WIDTH * share) * this._scale);
-		const from = fromEmpty ? 0 : (this._fractions.get(scoped) ?? 0);
-		this._fractions.set(scoped, fraction);
+		const from = fromEmpty ? 0 : (this._fractions.get(key) ?? 0);
+		this._fractions.set(key, fraction);
 		fill.set_width(widthFor(from));
 		fill.ease({width: widthFor(fraction), duration: BAR_DURATION, mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
 	}
 
-	// Return one skeleton block, which tick() pulses.
-	_skeleton(width, height) {
-		const block = new St.Widget();
-		block._forlShape = `width: ${width}px; height: ${height}px; border-radius: ${SKELETON_RADIUS}px;`;
-		block.set_style(block._forlShape);
-		this._skeletons.push(block);
-		return block;
-	}
-
-	// Rows shaped like the session and weekly rows, in skeleton blocks, with the
-	// name, the line under it, the bar and the percentage in the columns a real
-	// row puts them in, so the reading lands where the eye already is.
-	_addSkeletonRows() {
-		const scale = this._scale;
-		const right = CONTENT_WIDTH;
-		const center = LIMIT_ROW_MIN_HEIGHT / 2;
-		for (const labelWidth of SKELETON_ROWS) {
-			const row = new St.Widget({style: `width: ${CONTENT_WIDTH}px; height: ${LIMIT_ROW_MIN_HEIGHT}px;`});
-			const place = (width, height, x, y) => {
-				const block = this._skeleton(width, height);
-				block.set_position(Math.round(x * scale), Math.round(y * scale));
-				row.add_child(block);
-			};
-			place(labelWidth, SKELETON_TEXT_HEIGHT, 0, SKELETON_TEXT_INSET);
-			place(SKELETON_SUBTITLE_WIDTH, SKELETON_CAPTION_HEIGHT, 0, SKELETON_SUBTITLE_OFFSET + SKELETON_TEXT_INSET);
-			place(BAR_WIDTH, BAR_HEIGHT, BAR_COLUMN_LEFT - PANEL_PAD, center - BAR_HEIGHT / 2);
-			place(SKELETON_VALUE_WIDTH, SKELETON_TEXT_HEIGHT, right - SKELETON_VALUE_WIDTH, center - SKELETON_TEXT_HEIGHT / 2);
-			this.actor.add_child(row);
-			this.actor.add_child(spacer(LIMIT_ROW_GAP));
-		}
-	}
-
-	// The line counting down to the next reading, with a spinner on the right
-	// while a reading is in flight. A failure the user can fix, such as a sign-in
-	// that ran out, takes the line instead.
+	// The line saying when the next reading comes, or what went wrong, with a
+	// spinner at the end while a reading is in flight.
 	_addFooter(service, loading) {
-		const palette = this._palette;
-		this.actor.add_child(spacer(FOOTER_LEAD));
-		const footer = new St.BoxLayout({style: `height: ${FOOTER_HEIGHT}px;`});
-		if (loading) {
-			const block = this._skeleton(SKELETON_FOOTER_WIDTH, SKELETON_CAPTION_HEIGHT);
-			footer.add_child(new St.Bin({child: block, style: `padding-top: ${SKELETON_TEXT_INSET}px;`, y_align: Clutter.ActorAlign.START}));
-			this.actor.add_child(footer);
+		const text = loading ? `${LOADING_TEXT}…` : service.status || '';
+		if (!text && !service.refreshing) {
 			return;
 		}
-		const status = label(service.status || '', 'caption', palette.labelSecondary);
-		status.x_expand = true;
-		status.y_align = Clutter.ActorAlign.START;
-		footer.add_child(status);
-		if (service.next_update_at && (service.status || '').startsWith(NEXT_UPDATE_PREFIX)) {
-			this._countdown = {label: status, due: service.next_update_at};
+		const item = infoItem();
+		const status = label(text, {dim: true, caption: true, expand: true});
+		status.clutter_text.line_wrap = true;
+		item.add_child(status);
+		if (!loading && service.next_update_at && text.startsWith(NEXT_UPDATE_PREFIX)) {
+			this._countdowns.push({label: status, due: service.next_update_at});
 		}
-		if (service.refreshing) {
-			this._spinner = this._spinnerArea();
-			footer.add_child(this._spinner);
+		if (loading || service.refreshing) {
+			item.add_child(this._spinner());
 		}
-		this.actor.add_child(footer);
+		this._menu.addMenuItem(item);
 	}
 
-	// Return the spinner: an arc in the service's color, turning.
-	_spinnerArea() {
-		const area = new St.DrawingArea({style: `width: ${SPINNER_SIZE}px; height: ${SPINNER_SIZE}px;`, y_align: Clutter.ActorAlign.START});
-		const [red, green, blue] = [1, 3, 5].map(index => parseInt(this._accent.slice(index, index + 2), 16) / 255);
+	// Return a spinner: an arc in the menu's text color, turning.
+	_spinner() {
+		const area = new St.DrawingArea({
+			style: `width: ${SPINNER_SIZE}px; height: ${SPINNER_SIZE}px;`,
+			y_align: Clutter.ActorAlign.CENTER,
+			opacity: DIM_OPACITY,
+		});
 		area.connect('repaint', () => {
 			const cr = area.get_context();
 			const [width, height] = area.get_surface_size();
+			const color = area.get_theme_node().get_foreground_color();
 			const stroke = Math.max(1, SPINNER_STROKE * this._scale);
 			const radius = (Math.min(width, height) - stroke) / 2;
 			const seconds = (GLib.get_monotonic_time() - this._started) / 1e6;
 			const start = -((seconds * SPINNER_DEGREES_PER_SECOND) % 360) * Math.PI / 180;
 			cr.setLineWidth(stroke);
-			cr.setSourceRGBA(red, green, blue, 1);
+			cr.setSourceRGBA(color.red / 255, color.green / 255, color.blue / 255, 1);
 			cr.arc(width / 2, height / 2, radius, start - SPINNER_EXTENT * Math.PI / 180, start);
 			cr.stroke();
 			cr.$dispose();
 		});
+		this._spinners.push(area);
 		return area;
 	}
 }
