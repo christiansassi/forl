@@ -42,7 +42,7 @@ from ..render.icon import render_icon
 from ..render.svg import ASSETS_DIR
 from ..render.theme import LABEL_PRIMARY
 from ..settings.store import load_show_plan, load_start_on_startup, save_show_plan, save_start_on_startup
-from ..system import create_status_service, create_tray, enable_dpi_awareness, set_startup_entry, status_dir, tray_available
+from ..system import create_desktop_widgets, create_status_service, create_tray, enable_dpi_awareness, set_startup_entry, status_dir, tray_available
 from ..validation import require_member, require_non_empty_str, require_positive_int, require_type
 from .core import DEFAULT_POLL_SECONDS, QUIT_KEY, MetricReading, ProviderView, WidgetCore, quit_rows
 from .menu import TrayMenu
@@ -124,6 +124,11 @@ class WidgetApp:
 			)
 			for provider in providers
 		}
+		self._desktop = create_desktop_widgets(
+			self._root,
+			tuple(provider.key for provider in providers),
+			self._describe,
+		)
 		self._panel = Panel(
 			self._root,
 			providers,
@@ -136,6 +141,7 @@ class WidgetApp:
 			on_sign_in_code=lambda key, code: self._core(key).submit_sign_in_code(code),
 			on_toggle_metric=lambda key, metric: self._core(key).toggle_metric(metric),
 			on_toggle_panel_metric=lambda key, metric: self._core(key).toggle_panel_metric(metric),
+			on_add_widget=self._desktop.add if self._desktop is not None else None,
 		)
 		self._panel.set_startup(self._start_on_startup)
 		self._show_plan = load_show_plan()
@@ -389,13 +395,15 @@ class WidgetApp:
 			self._status_service.publish(document)
 
 	def _refresh_surfaces(self) -> None:
-		"""Redraw every tray icon, the panel when it is open, and the status files.
+		"""Redraw every tray icon, the panel when it is open, the desktop widgets, and the status files.
 
 		Returns:
 			None.
 		"""
 		self._panel.refresh()
 		self._write_status()
+		if self._desktop is not None:
+			self._desktop.refresh()
 		if not self._has_tray:
 			return
 		showing = False
@@ -451,6 +459,8 @@ class WidgetApp:
 			core.stop()
 		for tray in self._tray_icons():
 			tray.stop()
+		if self._desktop is not None:
+			self._desktop.stop()
 		if self._status_service is not None:
 			self._status_service.close()
 		self._root.quit()
@@ -462,6 +472,8 @@ class WidgetApp:
 			None. Returns once the user quits the widget.
 		"""
 		self._refresh_surfaces()
+		if self._desktop is not None:
+			self._desktop.start()
 		for tray in self._tray_icons():
 			tray.start()
 		self._drain_job = self._root.after(DRAIN_INTERVAL_MS, self._drain_events)

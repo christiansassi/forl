@@ -24,6 +24,7 @@ unchanged and nothing on Windows reads them.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -289,3 +290,75 @@ def _save_general_flag(field: str, value: bool) -> bool:
 	section = _section(GENERAL_SECTION)
 	section[field] = value
 	return _write_section(GENERAL_SECTION, section)
+
+
+# The desktop widgets the user placed, each with what it shows and where. Kept
+# in a section of its own, as a list, since there can be any number of them.
+DESKTOP_WIDGETS_SECTION = "desktop_widgets"
+DESKTOP_WIDGETS_FIELD = "items"
+WIDGET_SIZES = ("small", "medium")
+# A custom background is a "#rrggbb" color; none follows the system's mode.
+WIDGET_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
+# A widget's card: solid, or glass tinted light or dark.
+WIDGET_STYLES = ("solid", "glass_light", "glass_dark")
+
+
+def _desktop_widget(item: Any) -> dict[str, Any] | None:
+	"""Return one stored desktop widget with every field checked, or None.
+
+	Args:
+		item: What the file holds for one widget. Any.
+
+	Returns:
+		dict or None: The widget's id, size, service, usages, background color
+		and position, or None when the entry cannot describe a widget.
+	"""
+	if not isinstance(item, dict):
+		return None
+	identifier, size, service = item.get("id"), item.get("size"), item.get("service")
+	if not (isinstance(identifier, str) and identifier and size in WIDGET_SIZES and isinstance(service, str) and service):
+		return None
+	usages = item.get("usages")
+	position = [item.get("x"), item.get("y")]
+	return {
+		"id": identifier,
+		"size": size,
+		"service": service,
+		"usages": [usage for usage in usages if isinstance(usage, str) and usage] if isinstance(usages, list) else [],
+		"style": item.get("style") if item.get("style") in WIDGET_STYLES else WIDGET_STYLES[0],
+		"color": item.get("color") if isinstance(item.get("color"), str) and WIDGET_COLOR.match(item.get("color")) else None,
+		"x": position[0] if isinstance(position[0], int) and not isinstance(position[0], bool) else None,
+		"y": position[1] if isinstance(position[1], int) and not isinstance(position[1], bool) else None,
+	}
+
+
+def load_desktop_widgets() -> list[dict[str, Any]]:
+	"""Return the desktop widgets the user placed.
+
+	Returns:
+		list of dict: Each widget's id, size, service, usages, style ("solid",
+		"glass_light" or "glass_dark"), solid color (None to follow the
+		system's mode), and x and y in screen pixels (None
+		until it has been placed). An entry that cannot describe a widget is
+		left out.
+	"""
+	items = _section(DESKTOP_WIDGETS_SECTION).get(DESKTOP_WIDGETS_FIELD)
+	widgets = [_desktop_widget(item) for item in items] if isinstance(items, list) else []
+	return [widget for widget in widgets if widget is not None]
+
+
+def save_desktop_widgets(widgets: list[dict[str, Any]]) -> bool:
+	"""Store the desktop widgets the user placed.
+
+	Args:
+		widgets: Every widget, as load_desktop_widgets returns them. list of
+			dict.
+
+	Returns:
+		bool: True when the file was written, False when it could not be.
+	"""
+	require_type(widgets, list, "widgets")
+	checked = [_desktop_widget(widget) for widget in widgets]
+	if any(widget is None for widget in checked):
+		raise ValueError("widgets must each have an id, a size and a service")
+	return _write_section(DESKTOP_WIDGETS_SECTION, {DESKTOP_WIDGETS_FIELD: checked})

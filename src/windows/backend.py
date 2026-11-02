@@ -133,6 +133,28 @@ def status_dir() -> Path | None:
 	return None
 
 
+def create_desktop_widgets(
+	master: Any,
+	keys: tuple[str, ...],
+	describe: Callable[[str], Any],
+) -> Any:
+	"""Return the widgets the user placed on the desktop, not showing yet.
+
+	Args:
+		master: The application root window. tkinter.Tk.
+		keys: Every service, in the order the widgets' menu lists them. tuple
+			of str, non-empty.
+		describe: Returns everything known about one service, given its key.
+			Callable taking one str and returning ProviderView.
+
+	Returns:
+		DesktopWidgets: The widgets of src/windows/desktop_widgets.py.
+	"""
+	from .desktop_widgets import DesktopWidgets
+
+	return DesktopWidgets(master, keys, describe)
+
+
 def create_status_service(
 	on_open: Callable[[str, str], None],
 	on_shell_change: Callable[[bool], None],

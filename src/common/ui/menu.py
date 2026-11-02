@@ -49,6 +49,9 @@ SEPARATOR_OPACITY = 0.12
 HIGHLIGHT_RADIUS = 4
 
 CHECK_MARK = "✓"
+# The arrow at the end of a row that opens a submenu, and the room it takes.
+SUBMENU_ARROW = "›"
+ARROW_COLUMN = 20
 
 
 class TrayMenu:
@@ -78,6 +81,12 @@ class TrayMenu:
 		self._highlight_item = 0
 		self._scale = 1.0
 		self._visible = False
+		# The rows of each submenu, by the key of the row that opens it, and the
+		# menu a submenu is drawn in, made the first time one opens.
+		self._submenus: dict[str, tuple[MenuRow, ...]] = {}
+		self._child: TrayMenu | None = None
+		self._child_key = ""
+		self._parent: TrayMenu | None = None
 
 		self._window = tk.Toplevel(master)
 		self._window.withdraw()
@@ -86,7 +95,9 @@ class TrayMenu:
 		self._window.resizable(False, False)
 		self._window.configure(background=self._palette.surface)
 		self._window.bind("<Escape>", lambda _event: self.hide())
-		self._window.bind("<FocusOut>", lambda _event: self.hide())
+		# Checked a moment later, once the focus has landed: a click in this
+		# menu's submenu moves the focus there, which is not leaving the menu.
+		self._window.bind("<FocusOut>", lambda _event: self._window.after(50, self._close_unless_focused))
 
 		self._canvas = tk.Canvas(
 			self._window,
@@ -121,7 +132,8 @@ class TrayMenu:
 		"""
 		font = tkfont.Font(root=self._window, font=text_style("row"))
 		widest = max((font.measure(row.label) for row in rows if row.key != SEPARATOR), default=0)
-		width = max(self._unit(MIN_WIDTH), self._text_left(rows) + widest + self._unit(TRAILING_PAD))
+		arrows = self._unit(ARROW_COLUMN) if any(row.key in self._submenus for row in rows) else 0.0
+		width = max(self._unit(MIN_WIDTH), self._text_left(rows) + widest + arrows + self._unit(TRAILING_PAD))
 		height = self._unit(PAD_Y) * 2
 		for row in rows:
 			height += self._unit(SEPARATOR_HEIGHT if row.key == SEPARATOR else ROW_HEIGHT)
@@ -201,6 +213,15 @@ class TrayMenu:
 				fill=ink,
 				anchor="w",
 			)
+			if row.key in self._submenus:
+				self._canvas.create_text(
+					width - inset - self._unit(TEXT_INSET),
+					y + height / 2.0,
+					text=SUBMENU_ARROW,
+					font=text_style("row"),
+					fill=self._palette.label_secondary,
+					anchor="e",
+				)
 			y += height
 
 	def _row_at(self, y: float) -> str:
@@ -242,7 +263,13 @@ class TrayMenu:
 		Returns:
 			None.
 		"""
-		self._highlight(self._row_at(event.y) or None)
+		key = self._row_at(event.y)
+		self._highlight(key or None)
+		if key in self._submenus:
+			self._open_child(key)
+		elif key and self._child is not None:
+			self._child.hide()
+			self._child_key = ""
 
 	def _on_click(self, event: tk.Event) -> None:
 		"""Report the chosen row and close.
@@ -254,9 +281,68 @@ class TrayMenu:
 			None.
 		"""
 		key = self._row_at(event.y)
-		self.hide()
+		if key in self._submenus:
+			self._open_child(key)
+			return
+		root = self._root_menu()
+		root.hide()
 		if key:
-			self._on_choose(key)
+			root._on_choose(key)
+
+	def _close_unless_focused(self) -> None:
+		"""Close the menu, and its submenu, unless the focus is still in one of them.
+
+		Returns:
+			None.
+		"""
+		root = self._root_menu()
+		try:
+			focused = self._window.focus_get()
+		except (KeyError, tk.TclError):
+			focused = None
+		windows = set()
+		menu: TrayMenu | None = root
+		while menu is not None:
+			windows.add(menu._window)
+			menu = menu._child
+		if focused is not None and focused.winfo_toplevel() in windows:
+			return
+		root.hide()
+
+	def _root_menu(self) -> "TrayMenu":
+		"""Return the menu this one is a submenu of, at any depth, or itself.
+
+		Returns:
+			TrayMenu: The outermost menu.
+		"""
+		menu = self
+		while menu._parent is not None:
+			menu = menu._parent
+		return menu
+
+	def _open_child(self, key: str) -> None:
+		"""Open a row's submenu beside it.
+
+		The submenu takes no focus, so this menu keeps it, and closing this menu
+		closes the submenu with it.
+
+		Args:
+			key: Key of the row that opens it. str, non-empty.
+
+		Returns:
+			None.
+		"""
+		require_non_empty_str(key, "key")
+		if self._child is not None and self._child_key == key and self._child.visible:
+			return
+		if self._child is None:
+			self._child = TrayMenu(self._window.master, on_choose=self._on_choose)
+			self._child._parent = self
+		top = next((row_top for row_top, _bottom, candidate in self._row_tops if candidate == key), 0.0)
+		origin = (self._window.winfo_rootx() + self._window.winfo_width(), self._window.winfo_rooty() + int(top))
+		self._child_key = key
+		# The submenu gets every submenu, so a row of its own can open one too.
+		self._child.show(self._submenus[key], origin, self._accent, submenus=self._submenus, take_focus=False, origin_is_corner=True)
 
 	@property
 	def visible(self) -> bool:
@@ -267,7 +353,15 @@ class TrayMenu:
 		"""
 		return self._visible
 
-	def show(self, rows: tuple[MenuRow, ...], pointer: tuple[int, int], accent: str) -> None:
+	def show(
+		self,
+		rows: tuple[MenuRow, ...],
+		pointer: tuple[int, int],
+		accent: str,
+		submenus: dict[str, tuple[MenuRow, ...]] | None = None,
+		take_focus: bool = True,
+		origin_is_corner: bool = False,
+	) -> None:
 		"""Draw the menu and open it at the pointer.
 
 		The menu opens up and to the left of the pointer, the way a menu from the
@@ -280,6 +374,14 @@ class TrayMenu:
 				two ints.
 			accent: Color of the service whose icon was clicked, which the check
 				marks are drawn in, as a "#rrggbb" string. str, non-empty.
+			submenus: The rows of each submenu, by the key of the row that opens
+				it, which is drawn with an arrow and opens its submenu beside it
+				when pointed at. dict of str to tuple of MenuRow, or None.
+			take_focus: Whether the menu takes the focus, which closes it when
+				the user clicks elsewhere. A submenu does not, so the menu it
+				belongs to keeps it. bool.
+			origin_is_corner: Whether pointer is the menu's top left corner
+				rather than the pointer it opens up and to the left of. bool.
 
 		Returns:
 			None.
@@ -288,6 +390,9 @@ class TrayMenu:
 		if not rows:
 			raise ValueError("rows must not be empty")
 		require_non_empty_str(accent, "accent")
+		require_type(take_focus, bool, "take_focus")
+		require_type(origin_is_corner, bool, "origin_is_corner")
+		self._submenus = dict(submenus or {})
 
 		self._palette = current_palette()
 		self._accent = readable_accent(accent, self._palette)
@@ -305,14 +410,17 @@ class TrayMenu:
 			self._window.winfo_screenheight(),
 		)
 		margin = int(round(self._unit(SCREEN_MARGIN)))
-		x = min(max(left + margin, pointer[0] - width), right - width - margin)
-		y = min(max(top + margin, pointer[1] - height), bottom - height - margin)
+		wanted_x = pointer[0] if origin_is_corner else pointer[0] - width
+		wanted_y = pointer[1] if origin_is_corner else pointer[1] - height
+		x = min(max(left + margin, wanted_x), right - width - margin)
+		y = min(max(top + margin, wanted_y), bottom - height - margin)
 		self._window.geometry(f"{width}x{height}+{x}+{y}")
 
 		self._window.deiconify()
 		apply_panel_chrome(self._window_handle(), self._palette.dark)
 		self._window.lift()
-		self._window.focus_force()
+		if take_focus:
+			self._window.focus_force()
 		self._highlight(None)
 		self._visible = True
 
@@ -332,6 +440,9 @@ class TrayMenu:
 		Returns:
 			None.
 		"""
+		if self._child is not None:
+			self._child.hide()
+			self._child_key = ""
 		if not self._visible:
 			return
 		self._visible = False

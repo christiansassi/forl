@@ -118,6 +118,8 @@ GEAR_KEY = "gear"
 BACK_KEY = "back"
 STARTUP_KEY = "startup"
 SHOW_PLAN_KEY = "show_plan"
+# Adding a desktop widget carries its size after the prefix.
+ADD_WIDGET_PREFIX = "add_widget:"
 ACCOUNT_KEY = "account"
 SIGN_IN_KEY = "sign_in"
 SIGN_IN_LINK_KEY = "sign_in_link"
@@ -136,6 +138,8 @@ SHOW_TITLE = "Show"
 SHOW_COLUMNS = ("Panel", "Tray")
 STARTUP_LABEL = "Start at login"
 SHOW_PLAN_LABEL = "Show plan"
+DESKTOP_WIDGET_LABEL = "Desktop widget"
+ADD_WIDGET_LABELS = (("medium", "Add medium"), ("small", "Add small"))
 SIGN_OUT_LABEL = "Sign out"
 SIGN_IN_LABEL = "Sign in"
 SIGNED_IN_LABEL = "Signed in"
@@ -261,6 +265,7 @@ class Panel:
 		on_toggle_metric: Callable[[str, str], None],
 		on_toggle_panel_metric: Callable[[str, str], None],
 		on_sign_in_code: Callable[[str, str], bool],
+		on_add_widget: Callable[[str, str], None] | None = None,
 	) -> None:
 		"""Create the panel as a hidden child of the application root window.
 
@@ -302,6 +307,11 @@ class Panel:
 			on_sign_in_code: Submit a pasted browser code for the selected service.
 				Callable taking the provider key and code and returning bool;
 				raises ValueError when the code cannot be submitted.
+			on_add_widget: Called with the key of the service of the tab and
+				"small" or "medium" when the user adds a desktop widget of that
+				size, which then shows that service, or None on a platform
+				without desktop widgets, where the settings do not offer them.
+				Callable taking two str and returning None, or None.
 
 		Returns:
 			None.
@@ -343,6 +353,9 @@ class Panel:
 		self._on_toggle_metric = on_toggle_metric
 		self._on_toggle_panel_metric = on_toggle_panel_metric
 		self._on_sign_in_code = on_sign_in_code
+		if on_add_widget is not None and not callable(on_add_widget):
+			raise TypeError("on_add_widget must be callable or None")
+		self._on_add_widget = on_add_widget
 		self._selected_key = providers[0].key
 		self._current = describe(self._selected_key)
 		self._palette: Palette = DARK_PALETTE
@@ -1324,7 +1337,7 @@ class Panel:
 		return (switch, y + height)
 
 	def _draw_general_rows(self, y: float) -> float:
-		"""Draw the switches of the General section, start at login and show plan.
+		"""Draw the General section: start at login, show plan, and adding a desktop widget where there are any.
 
 		Args:
 			y: Vertical cursor in device pixels. float.
@@ -1334,6 +1347,12 @@ class Panel:
 		"""
 		for key, label in ((STARTUP_KEY, STARTUP_LABEL), (SHOW_PLAN_KEY, SHOW_PLAN_LABEL)):
 			self._switches[key], y = self._draw_switch_row(label, y, self._flags[key], key)
+		if self._on_add_widget is not None:
+			middle, height = self._draw_settings_label(DESKTOP_WIDGET_LABEL, y, 0.0)
+			right = self._unit(PANEL_WIDTH) - self._unit(PANEL_PAD)
+			for size, label in ADD_WIDGET_LABELS:
+				right = self._draw_action(label, right, middle, f"{ADD_WIDGET_PREFIX}{size}") - self._unit(TABS_GAP)
+			y += height
 		return y
 
 	def _draw_account_row(self, y: float) -> float:
@@ -1705,6 +1724,8 @@ class Panel:
 			self._set_view(SETTINGS_VIEW)
 		elif key == BACK_KEY:
 			self._set_view(USAGE_VIEW)
+		elif key.startswith(ADD_WIDGET_PREFIX) and self._on_add_widget is not None:
+			self._on_add_widget(self._selected_key, key[len(ADD_WIDGET_PREFIX):])
 		elif key in self._flags:
 			self._toggle_flag(key)
 		elif key in (SIGN_IN_KEY, ACCOUNT_KEY):

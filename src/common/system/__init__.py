@@ -30,6 +30,7 @@ BACKEND_NAMES = (
 	"animations_enabled",
 	"apply_panel_chrome",
 	"claim_single_instance",
+	"create_desktop_widgets",
 	"create_status_service",
 	"create_tray",
 	"detach",
@@ -146,6 +147,27 @@ def create_tray(
 		stop() methods.
 	"""
 	return _active().create_tray(name, draw, on_activate, on_menu, on_quit)
+
+
+def create_desktop_widgets(
+	master: Any,
+	keys: tuple[str, ...],
+	describe: Callable[[str], Any],
+) -> Any:
+	"""Return the widgets the user placed on the desktop, not showing yet.
+
+	Args:
+		master: The application root window. tkinter.Tk.
+		keys: Every service, in the order the widgets' menu lists them. tuple
+			of str, non-empty.
+		describe: Returns everything known about one service, given its key.
+			Callable taking one str and returning ProviderView.
+
+	Returns:
+		The platform's desktop widgets, which have add(size), start(),
+		refresh() and stop() methods, or None on a platform without them.
+	"""
+	return _active().create_desktop_widgets(master, keys, describe)
 
 
 def create_status_service(

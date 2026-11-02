@@ -541,6 +541,26 @@ def install_bus_service() -> bool:
 	return True
 
 
+def create_desktop_widgets(
+	master: Any,
+	keys: tuple[str, ...],
+	describe: Callable[[str], Any],
+) -> Any:
+	"""Return the widgets the user placed on the desktop.
+
+	Args:
+		master: The application root window. tkinter.Tk.
+		keys: Every service. tuple of str.
+		describe: Returns everything known about one service. Callable.
+
+	Returns:
+		None: Linux desktops get their widgets from the KDE Plasma widget and
+		the GNOME Shell extension instead.
+	"""
+	require_type(keys, tuple, "keys")
+	return None
+
+
 def create_status_service(
 	on_open: Callable[[str, str], None],
 	on_shell_change: Callable[[bool], None],
