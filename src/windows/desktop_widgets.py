@@ -13,9 +13,12 @@ A widget sits above the desktop icons rather than behind them: a window behind
 the icons never receives a click, and these are clicked, dragged and
 right-clicked.
 
-Dragging a widget moves it, and its place is kept. Right-clicking it offers its
-service, its usages, its background and its removal. Widgets are added from
-FORL's settings.
+Dragging a widget moves it, and its place is kept. It stays whole on the
+screens: it stops at an outer edge of a display and at the taskbar, and crosses
+where one display meets another. A widget can snap to the desktop's icon grid,
+moving from cell to cell as the icons do, or move freely. Right-clicking it
+offers its provider, what it shows, its style, snapping, locking its position,
+and its removal. Widgets are added from FORL's settings.
 """
 
 from __future__ import annotations
@@ -75,6 +78,7 @@ USAGE_PREFIX = "usage:"
 SERVICE_KEY = "menu:service"
 SHOW_KEY = "menu:show"
 STYLE_KEY = "menu:style"
+POSITION_KEY = "menu:position"
 GLASS_KEY = "menu:glass"
 CUSTOM_KEY = "background:custom"
 GLASS_LIGHT_KEY = "background:glass_light"
@@ -82,6 +86,7 @@ GLASS_DARK_KEY = "background:glass_dark"
 SERVICE_LABEL = "Provider"
 SHOW_LABEL = "Show"
 STYLE_LABEL = "Style"
+POSITION_LABEL = "Position"
 GLASS_LABEL = "Glass"
 CUSTOM_LABEL = "Custom color"
 GLASS_LIGHT_LABEL = "Light"
@@ -89,6 +94,17 @@ GLASS_DARK_LABEL = "Dark"
 SOLID_STYLE = "solid"
 GLASS_TONES = {"glass_light": "light", "glass_dark": "dark"}
 REMOVE_LABEL = "Remove widget"
+LOCK_KEY = "lock"
+LOCK_LABEL = "Lock position"
+SNAP_KEY = "snap"
+SNAP_LABEL = "Snap to grid"
+# Asked of the desktop's icon view for the size of its grid: the reply carries
+# the width in its low word and the height in its high word.
+LVM_GETITEMSPACING = 0x1033
+SMTO_ABORTIFHUNG = 0x0002
+# The icon grid of the default medium icons at 96 dots per inch, used when the
+# desktop cannot be asked.
+DEFAULT_GRID = (75, 100)
 
 _user32 = ctypes.windll.user32 if hasattr(ctypes, "windll") else None
 _gdi32 = ctypes.windll.gdi32 if hasattr(ctypes, "windll") else None
@@ -134,6 +150,10 @@ def _declare() -> None:
 	_gdi32.SelectObject.restype = wintypes.HGDIOBJ
 	_gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
 	_gdi32.DeleteDC.argtypes = [wintypes.HDC]
+	_user32.FindWindowExW.argtypes = [wintypes.HWND, wintypes.HWND, wintypes.LPCWSTR, wintypes.LPCWSTR]
+	_user32.FindWindowExW.restype = wintypes.HWND
+	_user32.SendMessageTimeoutW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM, wintypes.UINT, wintypes.UINT, ctypes.POINTER(ctypes.c_size_t)]
+	_user32.SendMessageTimeoutW.restype = ctypes.c_size_t
 	_dwmapi.DwmSetWindowAttribute.argtypes = [wintypes.HWND, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD]
 
 
@@ -202,20 +222,29 @@ class _WidgetWindow:
 		corner = ctypes.c_int(DWMWCP_DONOTROUND)
 		_dwmapi.DwmSetWindowAttribute(self.handle, DWMWA_WINDOW_CORNER_PREFERENCE, ctypes.byref(corner), ctypes.sizeof(corner))
 
-	def pin(self) -> None:
+	def pin(self, force: bool = False) -> None:
 		"""Hand the window to the desktop and put it at the bottom of the stack.
 
-		Done again whenever the desktop window has changed, as after Explorer
-		restarts, and after every move.
+		Done when the window first appears, when the desktop window has changed,
+		as after Explorer restarts, and when a dragged widget is dropped. Not at
+		every redraw: two overlapping widgets each sent to the bottom in turn
+		would swap places at every frame and flicker.
+
+		Args:
+			force: Whether to put it at the bottom even though the desktop window
+				has not changed. bool.
 
 		Returns:
 			None.
 		"""
+		require_type(force, bool, "force")
 		owner = _desktop_window()
-		if owner and owner != self._owner and _user32.IsWindow(owner):
+		changed = bool(owner) and owner != self._owner and bool(_user32.IsWindow(owner))
+		if changed:
 			_user32.SetWindowLongPtrW(self.handle, GWLP_HWNDPARENT, owner)
 			self._owner = owner
-		_user32.SetWindowPos(self.handle, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE)
+		if changed or force:
+			_user32.SetWindowPos(self.handle, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE)
 
 	def draw(self, image: Image.Image, position: tuple[int, int]) -> None:
 		"""Show a picture as the window, at a place on the screen.
@@ -383,6 +412,8 @@ class DesktopWidgets:
 			"usages": default_usages(size),
 			# Glass in the tone of the system's mode, as a Mac widget starts out.
 			"style": "glass_dark" if current_palette().dark else "glass_light",
+			"locked": False,
+			"snap": False,
 			"color": None,
 			"x": x,
 			"y": y,
@@ -450,6 +481,8 @@ class DesktopWidgets:
 		"""
 		if item["x"] is None or item["y"] is None:
 			item["x"], item["y"] = self._place_new(item["size"])
+		# A display may have been removed or rearranged since the widget was placed.
+		item["x"], item["y"] = self._on_screens(item, (item["x"], item["y"]), None)
 		surface = self._glass(item, scale)
 		widget_palette = self._widget_palette(item, palette, surface)
 		content = render_content(item["size"], self._describe(item["service"]), item["usages"], widget_palette, scale)
@@ -536,7 +569,7 @@ class DesktopWidgets:
 			None.
 		"""
 		item = self._item(identifier)
-		if item is None or self._press is None:
+		if item is None or self._press is None or item["locked"]:
 			return
 		start_x, start_y, left, top = self._press
 		dx, dy = event.x_root - start_x, event.y_root - start_y
@@ -550,13 +583,107 @@ class DesktopWidgets:
 			palette = self._widget_palette(item, current_palette(), surface)
 			self._drag_content = (render_content(item["size"], self._describe(item["service"]), item["usages"], palette, scale), palette)
 		self._dragged = True
-		item["x"], item["y"] = left + dx, top + dy
+		wanted = self._snapped((left + dx, top + dy)) if item["snap"] else (left + dx, top + dy)
+		item["x"], item["y"] = self._on_screens(item, wanted, (event.x_root, event.y_root))
 		if item["style"] == SOLID_STYLE:
 			self._windows[identifier].move((item["x"], item["y"]))
 		elif self._frame_job is None:
 			# Frames are drawn at most every GLASS_FRAME_MS, at the latest place,
 			# so a fast pointer is never queued behind its own trail.
 			self._frame_job = self._master.after(GLASS_FRAME_MS, lambda: self._glass_frame(identifier))
+
+	def _on_screens(self, item: dict[str, Any], wanted: tuple[int, int], pointer: tuple[int, int] | None) -> tuple[int, int]:
+		"""Return the nearest place to a wanted one where a widget lies whole on the screens.
+
+		A widget may lie across two displays where they meet, so it crosses from
+		one to the other; where no display goes on, it stops at the edge, and it
+		never goes under the taskbar.
+
+		Args:
+			item: The widget. dict.
+			wanted: Where it would go, its top left corner in screen pixels.
+				tuple of two ints.
+			pointer: Where the pointer is during a drag, whose display it is kept
+				on when it cannot go where wanted, or None to use the display
+				nearest the widget. tuple of two ints, or None.
+
+		Returns:
+			tuple: The place, in screen pixels.
+		"""
+		areas = [work for _whole, work in wallpaper.displays()]
+		if not areas:
+			return wanted
+		scale = self._scale()
+		width, height = (int(round(value * scale)) for value in SIZES[item["size"]])
+		x, y = wanted
+
+		def covered(px: int, py: int) -> bool:
+			if any(area[0] <= px < area[2] and area[1] <= py < area[3] for area in areas):
+				return True
+			# Displays scaled differently can be reported with a gap between them
+			# where they meet; a point in such a gap is on the seam, not off the
+			# screens.
+			for first in areas:
+				for second in areas:
+					across = first[2] <= px < second[0] and first[1] <= py < first[3] and second[1] <= py < second[3]
+					down = first[3] <= py < second[1] and first[0] <= px < first[2] and second[0] <= px < second[2]
+					if across or down:
+						return True
+			return False
+
+		probes = [(x + dx, y + dy) for dx in (0, width // 2, width - 1) for dy in (0, height // 2, height - 1)]
+		if all(covered(px, py) for px, py in probes):
+			return wanted
+		anchor = pointer or (x + width // 2, y + height // 2)
+		area = next((area for area in areas if area[0] <= anchor[0] < area[2] and area[1] <= anchor[1] < area[3]), None)
+		if area is None:
+			area = min(areas, key=lambda candidate: abs((candidate[0] + candidate[2]) / 2 - anchor[0]) + abs((candidate[1] + candidate[3]) / 2 - anchor[1]))
+		return (min(max(x, area[0]), area[2] - width), min(max(y, area[1]), area[3] - height))
+
+	def _grid(self) -> tuple[int, int]:
+		"""Return the size of a cell of the desktop's icon grid.
+
+		Returns:
+			tuple: Its width and height in pixels, asked of the desktop's icon
+			view, or the default grid scaled to the display when it cannot be.
+		"""
+		view = 0
+		for parent_class in ("Progman", "WorkerW"):
+			parent = _user32.FindWindowExW(None, None, parent_class, None)
+			while parent and not view:
+				shell = _user32.FindWindowExW(parent, None, "SHELLDLL_DefView", None)
+				if shell:
+					view = _user32.FindWindowExW(shell, None, "SysListView32", None)
+				parent = _user32.FindWindowExW(None, parent, parent_class, None)
+			if view:
+				break
+		if view:
+			reply = ctypes.c_size_t()
+			if _user32.SendMessageTimeoutW(view, LVM_GETITEMSPACING, 0, 0, SMTO_ABORTIFHUNG, 200, ctypes.byref(reply)):
+				width, height = reply.value & 0xFFFF, (reply.value >> 16) & 0xFFFF
+				if width > 0 and height > 0:
+					return (width, height)
+		scale = self._scale()
+		return (int(round(DEFAULT_GRID[0] * scale)), int(round(DEFAULT_GRID[1] * scale)))
+
+	def _snapped(self, position: tuple[int, int]) -> tuple[int, int]:
+		"""Return the corner of the icon grid cell nearest a place.
+
+		The grid starts at the top left of the work area of the display the
+		place is on, as the icons' does.
+
+		Args:
+			position: The place, in screen pixels. tuple of two ints.
+
+		Returns:
+			tuple: The nearest cell's top left corner, in screen pixels.
+		"""
+		areas = [work for _whole, work in wallpaper.displays()]
+		area = next((area for area in areas if area[0] <= position[0] < area[2] and area[1] <= position[1] < area[3]), areas[0] if areas else (0, 0, 0, 0))
+		cell_width, cell_height = self._grid()
+		x = area[0] + round((position[0] - area[0]) / cell_width) * cell_width
+		y = area[1] + round((position[1] - area[1]) / cell_height) * cell_height
+		return (x, y)
 
 	def _glass_frame(self, identifier: str) -> None:
 		"""Draw a dragged glass widget where it now is, on the glass behind it there.
@@ -604,7 +731,7 @@ class DesktopWidgets:
 				# Drawn whole once more, so the text takes the colors that read
 				# best on the glass where the widget came to rest.
 				self._redraw(identifier)
-			self._windows[identifier].pin()
+			self._windows[identifier].pin(force=True)
 
 	def _redraw(self, identifier: str) -> None:
 		"""Draw one widget again, where it now is.
@@ -627,33 +754,41 @@ class DesktopWidgets:
 			item: The widget. dict.
 
 		Returns:
-			tuple: The menu's rows, which are Service, Show and Style, each
-			opening a submenu, then removal; and the submenus by the key of the
+			tuple: The menu's rows, which are Provider, Show, Style and Position,
+			each opening a submenu, then removal; and the submenus by the key of the
 			row that opens them: the services, the usages of the widget's
-			service, and the styles, whose Glass row opens its light and dark
-			tints.
+			service, the styles, whose Glass row opens its light and dark tints,
+			and the position's snapping to the grid and locking.
 		"""
-		services = tuple(MenuRow(f"{SERVICE_PREFIX}{key}", self._describe(key).provider.label, key == item["service"]) for key in self._keys)
+		services = tuple(MenuRow(f"{SERVICE_PREFIX}{key}", self._describe(key).provider.label, key == item["service"], True) for key in self._keys)
 		snapshot = self._describe(item["service"]).snapshot
 		metrics = snapshot.metrics() if snapshot is not None else ()
 		choices = [(metric.key, metric.label) for metric in metrics] or [(key, key.title()) for key in default_usages(MEDIUM)]
-		usages = tuple(MenuRow(f"{USAGE_PREFIX}{key}", label, key in item["usages"]) for key, label in choices)
+		# A small widget shows one usage, so its list is marked as a choice of
+		# one; a medium one shows several, which are ticked.
+		single = item["size"] == SMALL
+		usages = tuple(MenuRow(f"{USAGE_PREFIX}{key}", label, key in item["usages"][:1 if single else None], single) for key, label in choices)
 		styles = (
-			MenuRow(GLASS_KEY, GLASS_LABEL, item["style"] != SOLID_STYLE),
-			MenuRow(CUSTOM_KEY, CUSTOM_LABEL, item["style"] == SOLID_STYLE),
+			MenuRow(GLASS_KEY, GLASS_LABEL, item["style"] != SOLID_STYLE, True),
+			MenuRow(CUSTOM_KEY, CUSTOM_LABEL, item["style"] == SOLID_STYLE, True),
 		)
 		tints = (
-			MenuRow(GLASS_LIGHT_KEY, GLASS_LIGHT_LABEL, item["style"] == "glass_light"),
-			MenuRow(GLASS_DARK_KEY, GLASS_DARK_LABEL, item["style"] == "glass_dark"),
+			MenuRow(GLASS_LIGHT_KEY, GLASS_LIGHT_LABEL, item["style"] == "glass_light", True),
+			MenuRow(GLASS_DARK_KEY, GLASS_DARK_LABEL, item["style"] == "glass_dark", True),
 		)
 		rows = (
 			MenuRow(SERVICE_KEY, SERVICE_LABEL, False),
 			MenuRow(SHOW_KEY, SHOW_LABEL, False),
 			MenuRow(STYLE_KEY, STYLE_LABEL, False),
+			MenuRow(POSITION_KEY, POSITION_LABEL, False),
 			MenuRow(SEPARATOR, "", False),
 			MenuRow(REMOVE_KEY, REMOVE_LABEL, False),
 		)
-		return rows, {SERVICE_KEY: services, SHOW_KEY: usages, STYLE_KEY: styles, GLASS_KEY: tints}
+		position = (
+			MenuRow(SNAP_KEY, SNAP_LABEL, item["snap"]),
+			MenuRow(LOCK_KEY, LOCK_LABEL, item["locked"]),
+		)
+		return rows, {SERVICE_KEY: services, SHOW_KEY: usages, STYLE_KEY: styles, POSITION_KEY: position, GLASS_KEY: tints}
 
 	def _open_menu(self, identifier: str, event: tk.Event) -> None:
 		"""Open a widget's right-click menu at the pointer.
@@ -692,6 +827,12 @@ class DesktopWidgets:
 			return
 		if key == REMOVE_KEY:
 			self._items.remove(item)
+		elif key == LOCK_KEY:
+			item["locked"] = not item["locked"]
+		elif key == SNAP_KEY:
+			item["snap"] = not item["snap"]
+			if item["snap"] and item["x"] is not None and item["y"] is not None:
+				item["x"], item["y"] = self._on_screens(item, self._snapped((item["x"], item["y"])), None)
 		elif key.startswith(SERVICE_PREFIX):
 			service = key[len(SERVICE_PREFIX):]
 			if service != item["service"]:

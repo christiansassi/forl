@@ -49,6 +49,8 @@ SEPARATOR_OPACITY = 0.12
 HIGHLIGHT_RADIUS = 4
 
 CHECK_MARK = "✓"
+# The mark of the chosen line of a list where only one can be chosen.
+DOT_MARK = "●"
 # The arrow at the end of a row that opens a submenu, and the room it takes.
 SUBMENU_ARROW = "›"
 ARROW_COLUMN = 20
@@ -201,7 +203,7 @@ class TrayMenu:
 				self._canvas.create_text(
 					inset + self._unit(TEXT_INSET + CHECK_COLUMN / 2.0),
 					y + height / 2.0,
-					text=CHECK_MARK,
+					text=DOT_MARK if row.single else CHECK_MARK,
 					font=text_style("row"),
 					fill=self._accent,
 				)

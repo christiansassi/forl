@@ -326,6 +326,8 @@ def _desktop_widget(item: Any) -> dict[str, Any] | None:
 		"service": service,
 		"usages": [usage for usage in usages if isinstance(usage, str) and usage] if isinstance(usages, list) else [],
 		"style": item.get("style") if item.get("style") in WIDGET_STYLES else WIDGET_STYLES[0],
+		"locked": item.get("locked") is True,
+		"snap": item.get("snap") is True,
 		"color": item.get("color") if isinstance(item.get("color"), str) and WIDGET_COLOR.match(item.get("color")) else None,
 		"x": position[0] if isinstance(position[0], int) and not isinstance(position[0], bool) else None,
 		"y": position[1] if isinstance(position[1], int) and not isinstance(position[1], bool) else None,
@@ -338,7 +340,9 @@ def load_desktop_widgets() -> list[dict[str, Any]]:
 	Returns:
 		list of dict: Each widget's id, size, service, usages, style ("solid",
 		"glass_light" or "glass_dark"), solid color (None to follow the
-		system's mode), and x and y in screen pixels (None
+		system's mode), whether its position is locked, whether it snaps to the
+		desktop icon grid, and x and y in screen
+		pixels (None
 		until it has been placed). An entry that cannot describe a widget is
 		left out.
 	"""

@@ -66,11 +66,14 @@ class MenuRow(NamedTuple):
 		label: The text of the line, empty for a rule. str.
 		checked: Whether the line carries a check mark, which is how a usage
 			already being shown is marked. bool.
+		single: Whether the line is one of a list where only one is chosen,
+			whose chosen line is marked with a dot rather than a check. bool.
 	"""
 
 	key: str
 	label: str
 	checked: bool
+	single: bool = False
 
 
 class MetricReading(NamedTuple):

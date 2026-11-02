@@ -63,21 +63,22 @@ def _registry(path: str, name: str) -> str:
 		return ""
 
 
-def _monitors() -> list[tuple[int, int, int, int]]:
-	"""Return every display's rectangle, in screen pixels.
+def displays() -> list[tuple[tuple[int, int, int, int], tuple[int, int, int, int]]]:
+	"""Return every display's rectangle and the part of it the taskbar leaves free.
 
 	Returns:
-		list of tuple: (left, top, right, bottom) for each display.
+		list of tuple: (whole display, work area) for each display, each as
+		(left, top, right, bottom) in screen pixels.
 	"""
-	found: list[tuple[int, int, int, int]] = []
+	found: list[tuple[tuple[int, int, int, int], tuple[int, int, int, int]]] = []
 	callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HMONITOR, wintypes.HDC, ctypes.POINTER(wintypes.RECT), wintypes.LPARAM)
 
 	def collect(monitor: int, _dc: int, _rect: object, _data: int) -> bool:
 		info = _MonitorInfo()
 		info.cbSize = ctypes.sizeof(_MonitorInfo)
 		if ctypes.windll.user32.GetMonitorInfoW(monitor, ctypes.byref(info)):
-			rect = info.rcMonitor
-			found.append((rect.left, rect.top, rect.right, rect.bottom))
+			whole, work = info.rcMonitor, info.rcWork
+			found.append(((whole.left, whole.top, whole.right, whole.bottom), (work.left, work.top, work.right, work.bottom)))
 		return True
 
 	ctypes.windll.user32.EnumDisplayMonitors(None, None, callback_type(collect), 0)
@@ -144,7 +145,7 @@ def _screens() -> list[tuple[tuple[int, int, int, int], Image.Image]]:
 		stamp = 0.0
 	style = _registry(DESKTOP_KEY, "WallpaperStyle") or FILL
 	tiled = _registry(DESKTOP_KEY, "TileWallpaper") == "1"
-	monitors = _monitors()
+	monitors = [whole for whole, _work in displays()]
 	key = (str(path), stamp, style, tiled, tuple(monitors))
 	if _cache["key"] == key:
 		return _cache["screens"]  # type: ignore[return-value]
