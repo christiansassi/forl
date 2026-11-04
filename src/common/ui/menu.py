@@ -59,13 +59,15 @@ ARROW_COLUMN = 20
 class TrayMenu:
 	"""A menu drawn in the style of the panel rather than by Windows."""
 
-	def __init__(self, master: tk.Tk, on_choose: Callable[[str], None]) -> None:
+	def __init__(self, master: tk.Tk, on_choose: Callable[[str], None], on_close: Callable[[], None] | None = None) -> None:
 		"""Create the menu as a hidden child of the application root window.
 
 		Args:
 			master: The application root window. tkinter.Tk.
 			on_choose: Called with the key of the line the user picked. Callable
 				taking one str and returning None.
+			on_close: Called whenever the menu closes, however it was closed,
+				or None. Callable taking no arguments and returning None, or None.
 
 		Returns:
 			None.
@@ -73,6 +75,9 @@ class TrayMenu:
 		require_type(master, tk.Tk, "master")
 		if not callable(on_choose):
 			raise TypeError("on_choose must be callable")
+		if on_close is not None and not callable(on_close):
+			raise TypeError("on_close must be callable or None")
+		self._on_close = on_close
 
 		self._palette: Palette = DARK_PALETTE
 		self._accent = DARK_PALETTE.label_primary
@@ -449,4 +454,6 @@ class TrayMenu:
 			return
 		self._visible = False
 		self._window.withdraw()
+		if self._on_close is not None:
+			self._on_close()
 

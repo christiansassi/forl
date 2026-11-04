@@ -67,6 +67,9 @@ DRAG_THRESHOLD = 4
 # milliseconds. Each frame draws only the glass again; the widget's content is
 # kept from the start of the drag.
 GLASS_FRAME_MS = 16
+# How long after a widget's menu closes it is sent to the bottom again, in
+# milliseconds, for the focus that lands on the desktop after the menu has gone.
+MENU_SETTLE_MS = 150
 # Where a new widget goes, from the top right of the work area, and how far each
 # next one steps along, in points.
 NEW_WIDGET_MARGIN = 24
@@ -141,6 +144,8 @@ def _declare() -> None:
 	_user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT]
 	_user32.FindWindowW.restype = wintypes.HWND
 	_user32.GetDC.restype = wintypes.HDC
+	_user32.GetDC.argtypes = [wintypes.HWND]
+	_user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
 	_user32.IsWindow.argtypes = [wintypes.HWND]
 	_gdi32.CreateCompatibleDC.restype = wintypes.HDC
 	_gdi32.CreateCompatibleDC.argtypes = [wintypes.HDC]
@@ -338,7 +343,7 @@ class DesktopWidgets:
 		self._describe = describe
 		self._items = [item for item in load_desktop_widgets() if item["service"] in keys]
 		self._windows: dict[str, _WidgetWindow] = {}
-		self._menu = TrayMenu(master, on_choose=self._choose)
+		self._menu = TrayMenu(master, on_choose=self._choose, on_close=self._after_menu)
 		self._menu_target = ""
 		self._press: tuple[int, int, int, int] | None = None
 		# A glass widget being dragged: its content, drawn once at the start, the
@@ -807,6 +812,30 @@ class DesktopWidgets:
 		accent = self._describe(item["service"]).provider.accent
 		rows, submenus = self._menus(item)
 		self._menu.show(rows, (event.x_root, event.y_root), accent, submenus=submenus)
+
+	def _after_menu(self) -> None:
+		"""Put every widget back at the bottom once its menu has closed.
+
+		Closing the menu hands the focus back to the desktop, and Windows raises
+		the windows the desktop owns with it, which the widgets are: left
+		alone, a widget would come up over the windows it was under. It is sent
+		down at once and again a moment later, since the focus can land after
+		the menu has gone.
+
+		Returns:
+			None.
+		"""
+		for delay in (0, MENU_SETTLE_MS):
+			self._master.after(delay, self._send_down)
+
+	def _send_down(self) -> None:
+		"""Put every widget at the bottom of the window stack.
+
+		Returns:
+			None.
+		"""
+		for window in self._windows.values():
+			window.pin(force=True)
 
 	def _choose(self, key: str) -> None:
 		"""Act on a line chosen from a widget's menu.
