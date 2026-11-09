@@ -123,6 +123,20 @@ class _BitmapHeader(ctypes.Structure):
 	]
 
 
+class _WindowPos(ctypes.Structure):
+	_fields_ = [
+		("hwnd", wintypes.HWND), ("hwndInsertAfter", wintypes.HWND), ("x", ctypes.c_int), ("y", ctypes.c_int),
+		("cx", ctypes.c_int), ("cy", ctypes.c_int), ("flags", wintypes.UINT),
+	]
+
+
+# The window procedure a widget's window is given, which sees every change to
+# its place in the stack before Windows makes it.
+_WindowProc = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
+GWLP_WNDPROC = -4
+WM_WINDOWPOSCHANGING = 0x0046
+
+
 class _BlendFunction(ctypes.Structure):
 	_fields_ = [("BlendOp", ctypes.c_ubyte), ("BlendFlags", ctypes.c_ubyte), ("SourceConstantAlpha", ctypes.c_ubyte), ("AlphaFormat", ctypes.c_ubyte)]
 
@@ -159,6 +173,8 @@ def _declare() -> None:
 	_user32.FindWindowExW.restype = wintypes.HWND
 	_user32.SendMessageTimeoutW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM, wintypes.UINT, wintypes.UINT, ctypes.POINTER(ctypes.c_size_t)]
 	_user32.SendMessageTimeoutW.restype = ctypes.c_size_t
+	_user32.CallWindowProcW.argtypes = [ctypes.c_void_p, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+	_user32.CallWindowProcW.restype = ctypes.c_ssize_t
 	_dwmapi.DwmSetWindowAttribute.argtypes = [wintypes.HWND, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD]
 
 
@@ -226,6 +242,31 @@ class _WidgetWindow:
 		# The card draws its own rounded corners, which Windows must not clip to its own.
 		corner = ctypes.c_int(DWMWCP_DONOTROUND)
 		_dwmapi.DwmSetWindowAttribute(self.handle, DWMWA_WINDOW_CORNER_PREFERENCE, ctypes.byref(corner), ctypes.sizeof(corner))
+		# Windows raises a window for reasons of its own: with the desktop that
+		# owns it when the desktop is activated, as it is at every sign-in and
+		# when a menu closes. Every change to the window's place in the stack
+		# is caught before it is made and turned into one to the bottom, so the
+		# widget never comes up over another window, whatever asked.
+		self._procedure = _WindowProc(self._on_message)
+		self._previous_procedure = _user32.SetWindowLongPtrW(self.handle, GWLP_WNDPROC, ctypes.cast(self._procedure, ctypes.c_void_p))
+
+	def _on_message(self, handle: int, message: int, wparam: int, lparam: int) -> int:
+		"""Keep the window at the bottom of the stack, and pass every message on to Tk.
+
+		Args:
+			handle: The window. int.
+			message: The message. int.
+			wparam: Its first parameter. int.
+			lparam: Its second parameter. int.
+
+		Returns:
+			int: What Tk's own procedure answers.
+		"""
+		if message == WM_WINDOWPOSCHANGING and lparam:
+			position = ctypes.cast(lparam, ctypes.POINTER(_WindowPos)).contents
+			if not position.flags & SWP_NOZORDER:
+				position.hwndInsertAfter = HWND_BOTTOM
+		return _user32.CallWindowProcW(self._previous_procedure, handle, message, wparam, lparam)
 
 	def pin(self, force: bool = False) -> None:
 		"""Hand the window to the desktop and put it at the bottom of the stack.
@@ -303,11 +344,14 @@ class _WidgetWindow:
 		self._position = position
 
 	def destroy(self) -> None:
-		"""Close the window.
+		"""Close the window, giving it back its own window procedure first.
 
 		Returns:
 			None.
 		"""
+		if self._previous_procedure:
+			_user32.SetWindowLongPtrW(self.handle, GWLP_WNDPROC, self._previous_procedure)
+			self._previous_procedure = None
 		self.window.destroy()
 
 
